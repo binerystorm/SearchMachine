@@ -122,9 +122,8 @@ static inline void str_shift_left(Str *str){
 }
 
 void parse_file(Arena arena, Str roam_buffer, Str *token_map, size_t *freq_map, size_t map_len){
-    // TODO(gerick): create more rigorouse tokenizer, rather than one that only works on white space
+    // TODO(gerick): Make better html parser
     while(roam_buffer.len > 0){
-        // stripping redundent information e.g white space, punctuation, html tags
         for(;
         (roam_buffer.len > 0) &&
         (is_space(*roam_buffer.data) ||
@@ -152,49 +151,34 @@ void parse_file(Arena arena, Str roam_buffer, Str *token_map, size_t *freq_map, 
         // TODO(gerick): copy tokens into own memory buffer, rather than borrowing them from the roam_buffer
         // extracting simple form of tokan into external arena
         const size_t token_len = (size_t)roam_buffer.data - (size_t)token_start_loc;
-        size_t map_idx = 0;
-        bool found = false;
-        for(map_idx = 0; token_map[map_idx].data != 0; map_idx++){
-            if(map_idx >= map_len){return;}
-            // FIX(gerick): check equality against a lower cased string, current system causes repeats in token_map
-            if(str_ncstr_eq(token_map[map_idx], token_start_loc, token_len)){
-                freq_map[map_idx] += 1;
-                found = true;
+        char* token_buf = arena_aloc(&arena, token_len);
+        for(size_t i = 0; i < token_len; i++){
+            char c = token_start_loc[i];
+            if(c >= 'A' && c <= 'Z') {
+                c += 32;
+            }
+            token_buf[i] = c;
+        }
+        Str token = {
+            token_buf,
+            token_len
+        };
+        for(size_t cur = 0;;cur++)
+        {
+            if(cur >= map_len){return;}
+            if(token_map[cur].data == 0){
+                token_map[cur].data = token.data;
+                token_map[cur].len = token.len;
+                freq_map[cur] = 1;
+                break;
+            }
+            if(str_eq(token_map[cur], token)){
+                freq_map[cur] += 1;
+                assert(arena.cur > token.len);
+                arena.cur -= token.len;
                 break;
             }
         }
-
-        if(!found){
-            char* token_buf = arena_aloc(&arena, token_len);
-            for(size_t i = 0; i < token_len; i++){
-                char c = token_start_loc[i];
-                if(c >= 'A' && c <= 'Z') {
-                    c += 32;
-                }
-                token_buf[i] = c;
-            }
-            assert(token_map[map_idx].data == 0);
-            token_map[map_idx].data = token_buf;
-            token_map[map_idx].len = token_len;
-            freq_map[map_idx] = 1;
-        }
-
-
-        // putting token in token set
-        // for(size_t cur = 0;;cur++)
-        // {
-        //     if(cur >= map_len){return;}
-        //     if(token_map[cur].data == 0){
-        //         token_map[cur].data = token.data;
-        //         token_map[cur].len = token.len;
-        //         freq_map[cur] = 1;
-        //         break;
-        //     }
-        //     if(str_eq(token_map[cur], token)){
-        //         freq_map[cur] += 1;
-        //         break;
-        //     }
-        // }
     }
 }
 
