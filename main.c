@@ -1,44 +1,12 @@
 #include <stdio.h>
 #include <errno.h>
-#include <string.h>
 #include <stdlib.h>
 // TODO(gerick): create my own assertion function
 #include <assert.h>
 
+#include "linux_platform.h"
+
 #define ArrayLen(ARR) sizeof((ARR))/sizeof((ARR)[0])
-
-//TODO(gerick): make this function "better"
-char *slurp_file_or_panic(const char *path)
-{
-    long str_s;
-    FILE *f = fopen(path, "rb");
-    if (f == NULL){
-        fprintf(stderr, "failed to open file %s: %s\n", path, strerror(errno));
-        exit(1);
-    }
-    assert(!(fseek(f, 0, SEEK_END) < 0));
-    str_s = ftell(f);
-    assert(!(str_s < 0));
-    assert(!(fseek(f, 0, SEEK_SET) < 0));
-
-    char *str = (char *)malloc(str_s+1);
-    if(str == NULL){
-        fprintf(stderr, "Could not allocate memory: %s\n", strerror(errno));
-        exit(1);
-    }
-    fread(str, str_s, sizeof(char), f);
-    if(ferror(f)){
-        fprintf(stderr, "File could not be read: Unknown\n");
-        exit(1);
-    }
-    if(fclose(f)){
-        fprintf(stderr, "File could not be closed: %s\n", strerror(errno));
-        exit(0);
-    }
-    str[str_s] = 0;
-
-    return str;
-}
 
 struct Str {
     const char *data;
@@ -50,6 +18,8 @@ struct Arena {
     size_t len;
     size_t cur;
 };
+
+#include "linux_platform.c"
 
 size_t cstr_len(const char *str)
 {
@@ -86,6 +56,7 @@ bool str_ncstr_eq(const Str lft, const char *rgt, const size_t rgt_len){
     return true;
 }
 
+// TODO(gerick): pull arena's into platform layer
 Arena arena_init(size_t len)
 {
     Arena ret = {
@@ -189,25 +160,26 @@ int main(){
         "./pygame-docs/ref/cdrom.html",
     };
     // TODO(gerick): start thinking about memory sizes less arbitrerally
-    Arena arena = arena_init(1024*4);
+    Arena arena = arena_init(1024*6);
     // TODO(gerick): consider making this a hash table
 
 #if 1
     for(size_t i = 0; i < ArrayLen(files); i++){
         Str tokens[sizeof(Str)*1024*3] = {};
         size_t freq[sizeof(size_t)*1024*3] = {};
-        char *file = slurp_file_or_panic(files[i]);
+        Buffer file_buf = slurp_file_or_panic(files[i]);
         Str roam_buffer = {
-            file,
-            cstr_len(file)
+            file_buf.data,
+            file_buf.cap
         };
         parse_file(arena, roam_buffer, tokens, freq, ArrayLen(tokens));
         for(size_t cur = 0; cur < ArrayLen(tokens) && tokens[cur].data != 0; cur++){
             if(tokens[cur].len >= 20){continue;}
-            printf("(%.*s):(%zu)\n", (int)tokens[cur].len, tokens[cur].data, freq[cur]);
+            //printf("(%.*s):(%zu)\n", (int)tokens[cur].len, tokens[cur].data, freq[cur]);
+            printf("(%.*s)\n", (int)tokens[cur].len, tokens[cur].data);
         }
-        printf("\n");
-        free(file);
+        //printf("\n");
+        unmap_buffer(&file_buf);
     }
 #endif
 #if 0
