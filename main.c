@@ -13,12 +13,6 @@ struct Str {
     size_t len;
 };
 
-//struct Arena {
-//    char *mem;
-//    size_t len;
-//    size_t cur;
-//};
-
 #include "linux_platform.c"
 
 size_t cstr_len(const char *str)
@@ -57,24 +51,6 @@ bool str_ncstr_eq(const Str lft, const char *rgt, const size_t rgt_len){
     return true;
 }
 
-// TODO(gerick): pull arena's into platform layer
-//Arena arena_init(size_t len)
-//{
-//    Arena ret = {
-//        .mem = (char*) malloc(len),
-//        .len = len,
-//        .cur = 0
-//    };
-//    return ret;
-//}
-//char *arena_aloc(Arena *arena, const size_t n)
-//{
-//    assert(arena->len > arena->cur + n && "to little memmory in arena");
-//    char *ret = arena->mem + arena->cur;
-//    arena->cur += n;
-//    return ret;
-//}
-
 static inline bool is_space(char c)
 {  
     return c == ' ' ||
@@ -93,7 +69,8 @@ static inline void str_shift_left(Str *str){
     str->len--;
 }
 
-void parse_file(Arena arena, Str roam_buffer, Str *token_map, size_t *freq_map, size_t map_len){
+void parse_file(Arena *arena, Str roam_buffer, Str *token_map, size_t *freq_map, size_t map_len,
+                Str *global_token_map, size_t *global_freq_map, size_t global_map_len){
     // TODO(gerick): Make better html parser
     while(roam_buffer.len > 0){
         for(;
@@ -123,7 +100,7 @@ void parse_file(Arena arena, Str roam_buffer, Str *token_map, size_t *freq_map, 
         // TODO(gerick): copy tokens into own memory buffer, rather than borrowing them from the roam_buffer
         // extracting simple form of tokan into external arena
         const size_t token_len = (size_t)roam_buffer.data - (size_t)token_start_loc;
-        char* token_buf = (char*)arena_alloc(&arena, token_len);
+        char* token_buf = (char*)arena_alloc(arena, token_len);
         for(size_t i = 0; i < token_len; i++){
             char c = token_start_loc[i];
             if(c >= 'A' && c <= 'Z') {
@@ -135,6 +112,23 @@ void parse_file(Arena arena, Str roam_buffer, Str *token_map, size_t *freq_map, 
             token_buf,
             token_len
         };
+        for(size_t cur = 0;;cur++)
+        {
+            if(cur >= global_map_len){return;}
+            if(global_token_map[cur].data == 0){
+                global_token_map[cur].data = token.data;
+                global_token_map[cur].len = token.len;
+                global_freq_map[cur] = 1;
+                break;
+            }
+            if(str_eq(global_token_map[cur], token)){
+                global_freq_map[cur] += 1;
+                assert((arena->top - sizeof(void**)) >= token.len);
+                arena->top -= token.len;
+                token.data = global_token_map[cur].data;
+                break;
+            }
+        }
         for(size_t cur = 0;;cur++)
         {
             if(cur >= map_len){return;}
@@ -149,8 +143,8 @@ void parse_file(Arena arena, Str roam_buffer, Str *token_map, size_t *freq_map, 
                 // This is dangerous as no arena allocations may occure until
                 // I have decided to keep this or throw it
                 freq_map[cur] += 1;
-                assert((arena.top - sizeof(void**)) >= token.len);
-                arena.top -= token.len;
+                //assert((arena.top - sizeof(void**)) >= token.len);
+                //arena.top -= token.len;
                 break;
             }
         }
@@ -159,33 +153,54 @@ void parse_file(Arena arena, Str roam_buffer, Str *token_map, size_t *freq_map, 
 int main()
 {
     //Assert(1==2);
+    #define NORMAL_MAP_LEN 600
+    #define GLOBAL_MAP_LEN 800
+    Str global_tokens[GLOBAL_MAP_LEN] = {};
+    size_t global_freqs[GLOBAL_MAP_LEN] = {};
+    Str file1_tokens[NORMAL_MAP_LEN] = {};
+    Str file2_tokens[NORMAL_MAP_LEN] = {};
+    Str file3_tokens[NORMAL_MAP_LEN] = {};
+    size_t file1_freqs[NORMAL_MAP_LEN] = {};
+    size_t file2_freqs[NORMAL_MAP_LEN] = {};
+    size_t file3_freqs[NORMAL_MAP_LEN] = {};
+    
     const char *files[] = {
         "./pygame-docs/ref/bufferproxy.html",
         "./pygame-docs/ref/camera.html",
         "./pygame-docs/ref/cdrom.html",
     };
-    // TODO(gerick): start thinking about memory sizes less arbitrerally
-    //Arena arena = arena_init(1024*6);
+    size_t *freq_maps[3] = {
+        file1_freqs,
+        file2_freqs,
+        file3_freqs,
+    };
+    Str *token_maps[3] = {
+        file1_tokens,
+        file2_tokens,
+        file3_tokens,
+    };
     Arena arena = arena_init();
     // TODO(gerick): consider making this a hash table
 
 #if 1
     for(size_t i = 0; i < ArrayLen(files); i++){
-        Str tokens[sizeof(Str)*1024*3] = {};
-        size_t freq[sizeof(size_t)*1024*3] = {};
+        // TODO(gerick): consider different way of asset management
         ReadBuffer file_buf = slurp_file_or_panic(files[i]);
         Str roam_buffer = {
             file_buf.data,
             file_buf.cap
         };
-        parse_file(arena, roam_buffer, tokens, freq, ArrayLen(tokens));
-        for(size_t cur = 0; cur < ArrayLen(tokens) && tokens[cur].data != 0; cur++){
-            if(tokens[cur].len >= 20){continue;}
-            //printf("(%.*s):(%zu)\n", (int)tokens[cur].len, tokens[cur].data, freq[cur]);
-            printf("(%.*s)\n", (int)tokens[cur].len, tokens[cur].data);
+        parse_file(&arena, roam_buffer, token_maps[i], freq_maps[i], NORMAL_MAP_LEN,
+                   global_tokens, global_freqs, GLOBAL_MAP_LEN);
+        for(size_t cur = 0; cur < NORMAL_MAP_LEN && token_maps[i][cur].data != 0; cur++){
+            printf("(%.*s):(%zu)\n", (int)token_maps[i][cur].len, token_maps[i][cur].data, freq_maps[i][cur]);
+            // printf("(%.*s)\n", (int)token_maps[i][cur].len, token_maps[i][cur].data);
         }
-        //printf("\n");
+        printf("================================================================\n");
         unmap_buffer(&file_buf);
+    }
+    for(size_t cur = 0; cur < GLOBAL_MAP_LEN && global_tokens[cur].data != 0; cur++){
+            printf("(%.*s):(%zu)\n", (int)global_tokens[cur].len, global_tokens[cur].data, global_freqs[cur]);
     }
 #endif
 #if 0

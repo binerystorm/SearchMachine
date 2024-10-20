@@ -4,6 +4,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
+// TODO(gerick): create my own logging system
 // TODO(gerick): create my own assertion function
 #include <assert.h>
 

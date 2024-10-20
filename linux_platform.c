@@ -1,6 +1,5 @@
 #include "linux_platform.h"
 //
-//TODO(gerick): pull all file io, dubug, asserts and memmory handeling into platform layer
 ReadBuffer slurp_file_or_panic(const char *path)
 {
     struct stat st;
