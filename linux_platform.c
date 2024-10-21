@@ -1,5 +1,5 @@
 #include "linux_platform.h"
-//
+
 ReadBuffer slurp_file_or_panic(const char *path)
 {
     struct stat st;
