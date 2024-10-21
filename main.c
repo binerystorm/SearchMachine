@@ -15,6 +15,7 @@ struct Str {
 
 #include "linux_platform.c"
 
+#define STR(cstr) (Str){(cstr), cstr_len((cstr))}
 size_t cstr_len(const char *str)
 {
     size_t len = 0;
@@ -153,6 +154,7 @@ void parse_file(Arena *arena, Str roam_buffer, Str *token_map, size_t *freq_map,
 int main()
 {
     //Assert(1==2);
+    // TODO(gerick): consider making this a hash table
     #define NORMAL_MAP_LEN 600
     #define GLOBAL_MAP_LEN 800
     Str global_tokens[GLOBAL_MAP_LEN] = {};
@@ -163,6 +165,14 @@ int main()
     size_t file1_freqs[NORMAL_MAP_LEN] = {};
     size_t file2_freqs[NORMAL_MAP_LEN] = {};
     size_t file3_freqs[NORMAL_MAP_LEN] = {};
+
+    char search_term[][10] = {
+        "the",
+        "cdrom",
+        "is",
+        "often",
+        "important",
+    };
     
     const char *files[] = {
         "./pygame-docs/ref/bufferproxy.html",
@@ -180,9 +190,8 @@ int main()
         file3_tokens,
     };
     Arena arena = arena_init();
-    // TODO(gerick): consider making this a hash table
 
-#if 1
+    // indexing files
     for(size_t i = 0; i < ArrayLen(files); i++){
         // TODO(gerick): consider different way of asset management
         ReadBuffer file_buf = slurp_file_or_panic(files[i]);
@@ -202,21 +211,40 @@ int main()
     for(size_t cur = 0; cur < GLOBAL_MAP_LEN && global_tokens[cur].data != 0; cur++){
             printf("(%.*s):(%zu)\n", (int)global_tokens[cur].len, global_tokens[cur].data, global_freqs[cur]);
     }
-#endif
-#if 0
-    const char *buf = "hello duude<shit und drek> cool";
-    Str tokens[sizeof(Str)*1024*3] = {};
-    size_t freq[sizeof(size_t)*1024*3] = {};
-    Str roam_buffer = {
-            buf,
-            cstr_len(buf)
-    };
-    parse_file(arena, roam_buffer, tokens, freq, ArrayLen(tokens));
-    for(size_t cur = 0; cur < ArrayLen(tokens) && tokens[cur].data != 0; cur++){
-        if(tokens[cur].len >= 20){continue;}
-        printf("(%.*s):(%zu)\n", (int)tokens[cur].len, tokens[cur].data, freq[cur]);
+
+    printf("================================================================\n\n");
+    printf("search term: ");
+    for (size_t i = 0; i < ArrayLen(search_term); i++){
+        printf("%s ", search_term[i]);
     }
     printf("\n");
-#endif 
+    // searching index
+    for(size_t file_idx = 0; file_idx < ArrayLen(files); file_idx++){
+        float rank = 0;
+        for(size_t term_idx = 0; term_idx < ArrayLen(search_term); term_idx++){
+            char *term = search_term[term_idx];
+            Str *token_map = token_maps[file_idx];
+            size_t *freq_map = freq_maps[file_idx];
+            float term_freq = 0;
+            float inverse_term_freq = 0;
+
+            for(size_t map_idx = 0; map_idx <= NORMAL_MAP_LEN; map_idx++){
+                if(token_map[map_idx].data == 0){break;}
+                if(str_eq(token_map[map_idx], STR(term))){
+                    term_freq = (float)freq_map[map_idx];
+                    break;
+                }
+            }
+            for(size_t map_idx = 0; map_idx <= GLOBAL_MAP_LEN; map_idx++){
+                if(global_tokens[map_idx].data == 0){break;}
+                if(str_eq(global_tokens[map_idx], STR(term))){
+                    inverse_term_freq = 1/((float)global_freqs[map_idx]);
+                    break;
+                }
+            }
+            rank += term_freq*inverse_term_freq;
+        }
+        printf("%s: %f\n", files[file_idx], rank);
+    }
     return 0;
 }
