@@ -66,3 +66,33 @@ void *arena_alloc(Arena *arena, size_t nbytes)
     return ret;
 }
 // TODO(gerick): Add arena free function, to unmap whole arena
+// TODO(gerick): Handle all errors that can occure during mem_mapping
+// and mem_unmapping
+
+FixedArena fixed_arena_init(size_t nbytes)
+{
+    return {
+        nbytes,
+        0,
+        mmap(NULL, nbytes, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0)
+    };
+}
+void *fixed_arena_alloc(FixedArena *arena, size_t nbytes)
+{
+    // TODO(gerick): replace this with a log message or maybe a returned error
+    // so the rest of the program can handle it
+    // NOTE(gerick): test code!!! relies on the user only allocating one data
+    // type per arena
+    assert((arena->top + nbytes) < arena->cap);
+    void *ret = (void*)((uint64)arena->data + (uint64)arena->top);
+    arena->top += nbytes;
+    return ret;
+}
+void fixed_arena_discard(FixedArena *arena)
+{
+    munmap(arena->data, arena->cap);
+    arena->cap = 0;
+    arena->top = 0;
+    arena->data = NULL;
+}
+

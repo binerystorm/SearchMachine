@@ -36,9 +36,19 @@ struct Arena {
     void *data;
 };
 
+struct FixedArena {
+    size_t cap;
+    size_t top;
+    void *data;
+};
+
 ReadBuffer slurp_file_or_panic(const char *path);
 void unmap_buffer(ReadBuffer *buf);
 
 Arena arena_init();
 void *arena_alloc(size_t nbytes);
+
+FixedArena fixed_arena_init(size_t nbytes);
+void *fixed_arena_alloc(FixedArena *arena, size_t nbytes);
+void fixed_arena_discard(FixedArena *arena);
 #endif // LINUX_PLATFORM_H_

@@ -13,15 +13,12 @@ struct Str {
     size_t len;
 };
 
-// #define NORMAL_MAP_LEN 600
-// #define GLOBAL_MAP_LEN 800
 #define MAP_LEN 800
 
 // NOTE(gerick): the keys and vals arrays should have the same capacity and length
 struct Map {
-    Str keys[MAP_LEN];
-    size_t vals[MAP_LEN];
-    size_t cap;
+    Str *keys;
+    size_t *vals;
     size_t len;
 };
 
@@ -92,9 +89,20 @@ static size_t *map_get(Map *map, Str key)
     return NULL;
 }
 
+Map map_init(Str *keys_addr, size_t *vals_addr)
+{
+    return (Map){
+        keys_addr,
+        vals_addr,
+        0
+    };
+}
+
 // void parse_file(Arena *arena, Str roam_buffer, Str *token_map, size_t *freq_map, size_t map_len,
 //                 Str *global_token_map, size_t *global_freq_map, size_t global_map_len){
-void parse_file(Arena *arena, Str roam_buffer, Map *map, Map *global_map)
+void parse_file(Arena *arena, Str roam_buffer, Map *map, Map *global_map,
+                FixedArena *global_keys_arena, FixedArena *global_vals_arena,
+                FixedArena *local_keys_arena, FixedArena *local_vals_arena)
 {
     // TODO(gerick): Make better html parser
     while(roam_buffer.len > 0){
@@ -139,10 +147,16 @@ void parse_file(Arena *arena, Str roam_buffer, Map *map, Map *global_map)
         };
         for(size_t cur = 0;;cur++)
         {
-            if(cur >= global_map->cap){return;}
-            if(global_map->keys[cur].data == 0){
-                global_map->keys[cur].data = token.data;
-                global_map->keys[cur].len = token.len;
+            // if(cur >= global_map->cap){return;}
+            // if(global_map->keys[cur].data == 0){
+            if(cur >= global_map->len){
+                Str *key_test = (Str*)fixed_arena_alloc(global_keys_arena, sizeof(Str));
+                size_t *val_test = (size_t*)fixed_arena_alloc(global_vals_arena, sizeof(size_t));
+                assert(key_test == &(global_map->keys[cur]));
+                assert(val_test == &(global_map->vals[cur]));
+                global_map->keys[cur] = token;
+                // global_map->keys[cur].data = token.data;
+                // global_map->keys[cur].len = token.len;
                 global_map->vals[cur] = 1;
                 global_map->len++;
                 break;
@@ -158,10 +172,16 @@ void parse_file(Arena *arena, Str roam_buffer, Map *map, Map *global_map)
         }
         for(size_t cur = 0;;cur++)
         {
-            if(cur >= map->cap){return;}
-            if(map->keys[cur].data == 0){
-                map->keys[cur].data = token.data;
-                map->keys[cur].len = token.len;
+            // if(cur >= map->cap){return;}
+            // if(map->keys[cur].data == 0){
+            if(cur >= map->len){
+                Str *key_test = (Str*)fixed_arena_alloc(local_keys_arena, sizeof(Str));
+                size_t *val_test = (size_t*)fixed_arena_alloc(local_vals_arena, sizeof(size_t));
+                assert(key_test == &(map->keys[cur]));
+                assert(val_test == &(map->vals[cur]));
+                map->keys[cur] = token;
+                // map->keys[cur].data = token.data;
+                // map->keys[cur].len = token.len;
                 map->vals[cur] = 1;
                 map->len++;
                 break;
@@ -175,16 +195,6 @@ void parse_file(Arena *arena, Str roam_buffer, Map *map, Map *global_map)
 }
 int main()
 {
-    //Assert(1==2);
-    // TODO(gerick): consider making this a hash table
-    // Str global_tokens[GLOBAL_MAP_LEN] = {};
-    // size_t global_freqs[GLOBAL_MAP_LEN] = {};
-    // Str file1_tokens[NORMAL_MAP_LEN] = {};
-    // Str file2_tokens[NORMAL_MAP_LEN] = {};
-    // Str file3_tokens[NORMAL_MAP_LEN] = {};
-    // size_t file1_freqs[NORMAL_MAP_LEN] = {};
-    // size_t file2_freqs[NORMAL_MAP_LEN] = {};
-    // size_t file3_freqs[NORMAL_MAP_LEN] = {};
 
     char search_term[][10] = {
         "the",
@@ -198,20 +208,18 @@ int main()
         "./pygame-docs/ref/bufferproxy.html",
         "./pygame-docs/ref/camera.html",
         "./pygame-docs/ref/cdrom.html",
+        "./pygame-docs/ref/color_list.html",
+        "./pygame-docs/ref/display.html",
+        "./pygame-docs/ref/draw.html",
+        "./pygame-docs/ref/event.html",
     };
-    Map global_map = {};
-    global_map.cap = MAP_LEN;
-    Map maps[3] = {};
-    // size_t *freq_maps[3] = {
-    //     file1_freqs,
-    //     file2_freqs,
-    //     file3_freqs,
-    // };
-    // Str *token_maps[3] = {
-    //     file1_tokens,
-    //     file2_tokens,
-    //     file3_tokens,
-    // };
+    FixedArena global_keys = fixed_arena_init(sizeof(Str)*1024*1024);
+    FixedArena global_vals = fixed_arena_init(sizeof(size_t)*1024*1024);
+    FixedArena local_keys = fixed_arena_init(sizeof(Str)*1024*1024);
+    FixedArena local_vals = fixed_arena_init(sizeof(size_t)*1024*1024);
+    // TODO(gerick): consider making this a hash table
+    Map global_map = map_init((Str*)global_keys.data, (size_t*)global_vals.data);
+    Map maps[7] = {};
     Arena arena = arena_init();
 
     // indexing files
@@ -223,19 +231,18 @@ int main()
             file_buf.data,
             file_buf.cap
         };
-        maps[i].cap = MAP_LEN;
+        maps[i] = map_init((Str*)fixed_arena_alloc(&local_keys, 0), (size_t*)fixed_arena_alloc(&local_vals, 0));
         assert(maps[i].len == 0);
-        parse_file(&arena, roam_buffer, &(maps[i]), &global_map);
-        // parse_file(&arena, roam_buffer, token_maps[i], freq_maps[i], NORMAL_MAP_LEN,
-        //            global_tokens, global_freqs, GLOBAL_MAP_LEN);
-        for(size_t cur = 0; cur < maps[i].cap && maps[i].keys[cur].data != 0; cur++){
+        parse_file(&arena, roam_buffer, &(maps[i]), &global_map,
+                   &global_keys, &global_vals, &local_keys, &local_vals);
+        for(size_t cur = 0; cur < maps[i].len; cur++){
             printf("(%.*s):(%zu)\n", (int)maps[i].keys[cur].len, maps[i].keys[cur].data, maps[i].vals[cur]);
             // printf("(%.*s)\n", (int)token_maps[i][cur].len, token_maps[i][cur].data);
         }
         printf("================================================================\n");
         unmap_buffer(&file_buf);
     }
-    for(size_t cur = 0; cur < global_map.cap && global_map.keys[cur].data != 0; cur++){
+    for(size_t cur = 0; cur < global_map.len; cur++){
             printf("(%.*s):(%zu)\n", (int)global_map.keys[cur].len, global_map.keys[cur].data, global_map.vals[cur]);
     }
 
@@ -262,18 +269,9 @@ int main()
             if((map_val = map_get(&global_map, STR(term))) != NULL){
                 inverse_term_freq = 1/((float) *map_val);
             }
-            //for(size_t map_idx = 0; map_idx < maps[file_idx].len; map_idx++){
-            //    if(str_eq(current_map.keys[map_idx], STR(term))){
-            //        term_freq = (float)current_map.vals[map_idx];
-            //        break;
-            //    }
-            //}
-            //for(size_t map_idx = 0; map_idx < global_map.len; map_idx++){
-            //    if(str_eq(global_map.keys[map_idx], STR(term))){
-            //        inverse_term_freq = 1/((float)global_map.vals[map_idx]);
-            //        break;
-            //    }
-            //}
+            printf("%s:\n", term);
+            printf("\tterm frequency: %f\n", term_freq);
+            printf("\tinverse document frequency: %f\n", inverse_term_freq);
             rank += term_freq*inverse_term_freq;
         }
         printf("%s: %f\n", files[file_idx], rank);
