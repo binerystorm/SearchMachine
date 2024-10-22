@@ -17,6 +17,8 @@ struct Str {
 
 // NOTE(gerick): the keys and vals arrays should have the same capacity and length
 struct Map {
+    FixedArena *keys_arena;
+    FixedArena *vals_arena;
     Str *keys;
     size_t *vals;
     size_t len;
@@ -74,7 +76,8 @@ static inline bool is_punctuation(char c)
     return (c >= 33 && c <= 47) || c == '?' || c == ';';
 }
 
-static inline void str_shift_left(Str *str){
+static inline void str_shift_left(Str *str)
+{
     str->data++;
     str->len--;
 }
@@ -89,20 +92,35 @@ static size_t *map_get(Map *map, Str key)
     return NULL;
 }
 
-Map map_init(Str *keys_addr, size_t *vals_addr)
+static void map_insert(Map *map, Str key, size_t val)
+{
+    Str *new_key = (Str*)fixed_arena_alloc(map->keys_arena, sizeof(Str));
+    size_t *new_val = (size_t*)fixed_arena_alloc(map->vals_arena, sizeof(size_t));
+
+    assert((Str*)((size_t)map->keys + (map->len * sizeof(Str))) == new_key);
+    assert((size_t*)((size_t)map->vals + (map->len * sizeof(size_t))) == new_val);
+    map->len += 1;
+
+    *new_key = key;
+    *new_val = val;
+}
+
+Map map_init(FixedArena *const keys_arena, FixedArena *const vals_arena)
 {
     return (Map){
-        keys_addr,
-        vals_addr,
+        keys_arena,
+        vals_arena,
+        (Str*)fixed_arena_alloc(keys_arena, 0),
+        (size_t*)fixed_arena_alloc(vals_arena, 0),
         0
     };
 }
 
 // void parse_file(Arena *arena, Str roam_buffer, Str *token_map, size_t *freq_map, size_t map_len,
 //                 Str *global_token_map, size_t *global_freq_map, size_t global_map_len){
-void parse_file(Arena *arena, Str roam_buffer, Map *map, Map *global_map,
-                FixedArena *global_keys_arena, FixedArena *global_vals_arena,
-                FixedArena *local_keys_arena, FixedArena *local_vals_arena)
+void parse_file(Arena *arena, Str roam_buffer, Map *map, Map *global_map)
+                // FixedArena *global_keys_arena, FixedArena *global_vals_arena,
+                // FixedArena *local_keys_arena, FixedArena *local_vals_arena)
 {
     // TODO(gerick): Make better html parser
     while(roam_buffer.len > 0){
@@ -130,7 +148,6 @@ void parse_file(Arena *arena, Str roam_buffer, Map *map, Map *global_map,
             *roam_buffer.data != '<');
             str_shift_left(&roam_buffer));
 
-        // TODO(gerick): copy tokens into own memory buffer, rather than borrowing them from the roam_buffer
         // extracting simple form of tokan into external arena
         const size_t token_len = (size_t)roam_buffer.data - (size_t)token_start_loc;
         char* token_buf = (char*)arena_alloc(arena, token_len);
@@ -145,63 +162,68 @@ void parse_file(Arena *arena, Str roam_buffer, Map *map, Map *global_map,
             token_buf,
             token_len
         };
-        for(size_t cur = 0;;cur++)
-        {
-            // if(cur >= global_map->cap){return;}
-            // if(global_map->keys[cur].data == 0){
-            if(cur >= global_map->len){
-                Str *key_test = (Str*)fixed_arena_alloc(global_keys_arena, sizeof(Str));
-                size_t *val_test = (size_t*)fixed_arena_alloc(global_vals_arena, sizeof(size_t));
-                assert(key_test == &(global_map->keys[cur]));
-                assert(val_test == &(global_map->vals[cur]));
-                global_map->keys[cur] = token;
-                // global_map->keys[cur].data = token.data;
-                // global_map->keys[cur].len = token.len;
-                global_map->vals[cur] = 1;
-                global_map->len++;
-                break;
+        size_t *global_val = map_get(global_map, token);
+        if(global_val == NULL){
+            map_insert(global_map, token, 1);
+            map_insert(map, token, 1);
+            continue;
+        } else {
+            *global_val += 1;
+            size_t *local_val = map_get(map, token);
+            if(local_val == NULL){
+                map_insert(map, token, 1);
+            } else {
+                *local_val += 1;
             }
-            if(str_eq(global_map->keys[cur], token)){
-                // TODO(gerick): Create proper scratch buffer system
-                global_map->vals[cur] += 1;
-                assert((arena->top - sizeof(void**)) >= token.len);
-                arena->top -= token.len;
-                token.data = global_map->keys[cur].data;
-                break;
-            }
+            // TODO(gerick): Create proper scratch buffer system
+            assert((arena->top - sizeof(void**)) >= token.len);
+            arena->top -= token.len;
         }
-        for(size_t cur = 0;;cur++)
-        {
-            // if(cur >= map->cap){return;}
-            // if(map->keys[cur].data == 0){
-            if(cur >= map->len){
-                Str *key_test = (Str*)fixed_arena_alloc(local_keys_arena, sizeof(Str));
-                size_t *val_test = (size_t*)fixed_arena_alloc(local_vals_arena, sizeof(size_t));
-                assert(key_test == &(map->keys[cur]));
-                assert(val_test == &(map->vals[cur]));
-                map->keys[cur] = token;
-                // map->keys[cur].data = token.data;
-                // map->keys[cur].len = token.len;
-                map->vals[cur] = 1;
-                map->len++;
-                break;
-            }
-            if(str_eq(map->keys[cur], token)){
-                map->vals[cur] += 1;
-                break;
-            }
-        }
+        // for(size_t cur = 0;;cur++)
+        // {
+        //     if(cur >= global_map->len){
+        //         Str *key_test = (Str*)fixed_arena_alloc(global_keys_arena, sizeof(Str));
+        //         size_t *val_test = (size_t*)fixed_arena_alloc(global_vals_arena, sizeof(size_t));
+        //         assert(key_test == &(global_map->keys[cur]));
+        //         assert(val_test == &(global_map->vals[cur]));
+        //         global_map->keys[cur] = token;
+        //         global_map->vals[cur] = 1;
+        //         global_map->len++;
+        //         break;
+        //     }
+        //     if(str_eq(global_map->keys[cur], token)){
+        //         // TODO(gerick): Create proper scratch buffer system
+        //         global_map->vals[cur] += 1;
+        //         assert((arena->top - sizeof(void**)) >= token.len);
+        //         arena->top -= token.len;
+        //         token.data = global_map->keys[cur].data;
+        //         break;
+        //     }
+        // }
+        // for(size_t cur = 0;;cur++)
+        // {
+        //     if(cur >= map->len){
+        //         Str *key_test = (Str*)fixed_arena_alloc(local_keys_arena, sizeof(Str));
+        //         size_t *val_test = (size_t*)fixed_arena_alloc(local_vals_arena, sizeof(size_t));
+        //         assert(key_test == &(map->keys[cur]));
+        //         assert(val_test == &(map->vals[cur]));
+        //         map->keys[cur] = token;
+        //         map->vals[cur] = 1;
+        //         map->len++;
+        //         break;
+        //     }
+        //     if(str_eq(map->keys[cur], token)){
+        //         map->vals[cur] += 1;
+        //         break;
+        //     }
+        // }
     }
 }
 int main()
 {
 
     char search_term[][10] = {
-        "the",
-        "cdrom",
-        "is",
-        "often",
-        "important",
+        "how", "to", "draw", "a", "rectangle", "to", "the", "screen"
     };
     
     const char *files[] = {
@@ -213,17 +235,16 @@ int main()
         "./pygame-docs/ref/draw.html",
         "./pygame-docs/ref/event.html",
     };
-    FixedArena global_keys = fixed_arena_init(sizeof(Str)*1024*1024);
-    FixedArena global_vals = fixed_arena_init(sizeof(size_t)*1024*1024);
-    FixedArena local_keys = fixed_arena_init(sizeof(Str)*1024*1024);
-    FixedArena local_vals = fixed_arena_init(sizeof(size_t)*1024*1024);
-    // TODO(gerick): consider making this a hash table
-    Map global_map = map_init((Str*)global_keys.data, (size_t*)global_vals.data);
-    Map maps[7] = {};
+    FixedArena global_keys_arena = fixed_arena_init(sizeof(Str)*1024*1024);
+    FixedArena global_vals_arena = fixed_arena_init(sizeof(size_t)*1024*1024);
+    FixedArena local_keys_arena = fixed_arena_init(sizeof(Str)*1024*1024);
+    FixedArena local_vals_arena = fixed_arena_init(sizeof(size_t)*1024*1024);
     Arena arena = arena_init();
+    // TODO(gerick): consider making this a hash table
+    Map global_map = map_init(&global_keys_arena, &global_vals_arena);
+    Map maps[7] = {};
 
     // indexing files
-    assert(global_map.len == 0);
     for(size_t i = 0; i < ArrayLen(files); i++){
         // TODO(gerick): consider different way of asset management
         ReadBuffer file_buf = slurp_file_or_panic(files[i]);
@@ -231,10 +252,10 @@ int main()
             file_buf.data,
             file_buf.cap
         };
-        maps[i] = map_init((Str*)fixed_arena_alloc(&local_keys, 0), (size_t*)fixed_arena_alloc(&local_vals, 0));
+        maps[i] = map_init(&local_keys_arena, &local_vals_arena);
         assert(maps[i].len == 0);
-        parse_file(&arena, roam_buffer, &(maps[i]), &global_map,
-                   &global_keys, &global_vals, &local_keys, &local_vals);
+        parse_file(&arena, roam_buffer, &(maps[i]), &global_map);
+                   //&global_keys, &global_vals, &local_keys, &local_vals);
         for(size_t cur = 0; cur < maps[i].len; cur++){
             printf("(%.*s):(%zu)\n", (int)maps[i].keys[cur].len, maps[i].keys[cur].data, maps[i].vals[cur]);
             // printf("(%.*s)\n", (int)token_maps[i][cur].len, token_maps[i][cur].data);
@@ -269,9 +290,9 @@ int main()
             if((map_val = map_get(&global_map, STR(term))) != NULL){
                 inverse_term_freq = 1/((float) *map_val);
             }
-            printf("%s:\n", term);
-            printf("\tterm frequency: %f\n", term_freq);
-            printf("\tinverse document frequency: %f\n", inverse_term_freq);
+            // printf("%s:\n", term);
+            // printf("\tterm frequency: %f\n", term_freq);
+            // printf("\tinverse document frequency: %f\n", inverse_term_freq);
             rank += term_freq*inverse_term_freq;
         }
         printf("%s: %f\n", files[file_idx], rank);
