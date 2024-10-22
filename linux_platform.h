@@ -13,7 +13,6 @@
 typedef unsigned char uint8;
 typedef unsigned long long uint64;
 typedef unsigned long uint32;
-//#define NULL (long long int) 0
 
 struct ReadBuffer {
     const char * const data;
