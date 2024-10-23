@@ -28,6 +28,59 @@ void unmap_buffer(ReadBuffer *buf)
     buf->unmapped = true;
 }
 
+char **get_files_in_dir(Arena *arena, const char *path, size_t *file_count)
+{
+    // TODO(gerick): handle errors properly
+    DIR *dir_hdl = opendir(path);
+    long start_loc = telldir(dir_hdl);
+    struct dirent *entry;
+    struct stat st;
+    size_t entry_count = 0;
+    errno = 0;
+    while(true){
+        entry = readdir(dir_hdl);
+        assert(errno == 0);
+        if(entry == NULL){break;}
+
+        const size_t path_len = strlen(path) + strlen(entry->d_name) + 1;
+        char* file_name_buf = (char*)arena_alloc(arena, path_len);
+
+        strcpy(file_name_buf, path);
+        strcat(file_name_buf, entry->d_name);
+        assert(stat(file_name_buf, &st) == 0);
+        if ((st.st_mode & S_IFMT) == S_IFREG){
+            entry_count += 1;
+        }
+        assert((arena->top - sizeof(void**)) >= path_len);
+        arena->top -= path_len;
+    }
+    if(entry_count == 0){
+        return NULL;
+    }
+
+    char **file_list = (char**)arena_alloc(arena, entry_count * sizeof(char*));
+    seekdir(dir_hdl, start_loc);
+    for(size_t idx = 0; idx < entry_count;) {
+        entry = readdir(dir_hdl);
+        assert(errno == 0 && entry != NULL);
+        // NOTE(gerick): +1 is for the NULL byte at the end of the cstr after concatination.
+        const size_t path_len = strlen(path) + strlen(entry->d_name) + 1;
+        file_list[idx] = (char*)arena_alloc(arena, path_len);
+        strcpy(file_list[idx], path);
+        strcat(file_list[idx], entry->d_name);
+        assert(stat(file_list[idx], &st) == 0);
+        if ((st.st_mode & S_IFMT) == S_IFREG){
+            idx++;
+        } else {
+            //entry_count -= 1;
+            assert((arena->top - sizeof(void**)) >= path_len);
+            arena->top -= path_len;
+        }
+    }
+    *file_count = entry_count;
+    return file_list;
+}
+
 Arena arena_init()
 {
     void* data = (void*)mmap(NULL, getpagesize(), PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);

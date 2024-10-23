@@ -177,33 +177,38 @@ void parse_file(Arena *arena, Str roam_buffer, Map *map, Map *global_map)
         }
     }
 }
+
 int main()
 {
+
+    FixedArena global_keys_arena = fixed_arena_init(sizeof(Str)*1024*1024);
+    FixedArena global_vals_arena = fixed_arena_init(sizeof(size_t)*1024*1024);
+    FixedArena local_keys_arena = fixed_arena_init(sizeof(Str)*1024*1024);
+    FixedArena local_vals_arena = fixed_arena_init(sizeof(size_t)*1024*1024);
+    Arena token_value_arena = arena_init();
+    Arena file_name_arena = arena_init();
 
     char search_term[][10] = {
         "how", "to", "draw", "a", "rectangle", "to", "the", "screen"
     };
     
-    const char *files[] = {
-        "./pygame-docs/ref/bufferproxy.html",
-        "./pygame-docs/ref/camera.html",
-        "./pygame-docs/ref/cdrom.html",
-        "./pygame-docs/ref/color_list.html",
-        "./pygame-docs/ref/display.html",
-        "./pygame-docs/ref/draw.html",
-        "./pygame-docs/ref/event.html",
-    };
-    FixedArena global_keys_arena = fixed_arena_init(sizeof(Str)*1024*1024);
-    FixedArena global_vals_arena = fixed_arena_init(sizeof(size_t)*1024*1024);
-    FixedArena local_keys_arena = fixed_arena_init(sizeof(Str)*1024*1024);
-    FixedArena local_vals_arena = fixed_arena_init(sizeof(size_t)*1024*1024);
-    Arena arena = arena_init();
+    size_t files_len = 0;
+    char **files = get_files_in_dir(&file_name_arena, "./pygame-docs/ref/", &files_len);
+    //const char *files[] = {
+    //    "./pygame-docs/ref/bufferproxy.html",
+    //    "./pygame-docs/ref/camera.html",
+    //    "./pygame-docs/ref/cdrom.html",
+    //    "./pygame-docs/ref/color_list.html",
+    //    "./pygame-docs/ref/display.html",
+    //    "./pygame-docs/ref/draw.html",
+    //    "./pygame-docs/ref/event.html",
+    //};
     // TODO(gerick): consider making this a hash table
     Map global_map = map_init(&global_keys_arena, &global_vals_arena);
-    Map maps[7] = {};
+    Map *maps = (Map*)arena_alloc(&file_name_arena, sizeof(Map)*files_len);
 
     // indexing files
-    for(size_t i = 0; i < ArrayLen(files); i++){
+    for(size_t i = 0; i < files_len; i++){
         // TODO(gerick): consider different way of asset management
         ReadBuffer file_buf = slurp_file_or_panic(files[i]);
         Str roam_buffer = {
@@ -212,7 +217,7 @@ int main()
         };
         maps[i] = map_init(&local_keys_arena, &local_vals_arena);
         assert(maps[i].len == 0);
-        parse_file(&arena, roam_buffer, &(maps[i]), &global_map);
+        parse_file(&token_value_arena, roam_buffer, &(maps[i]), &global_map);
         for(size_t cur = 0; cur < maps[i].len; cur++){
             printf("(%.*s):(%zu)\n", (int)maps[i].keys[cur].len, maps[i].keys[cur].data, maps[i].vals[cur]);
             // printf("(%.*s)\n", (int)token_maps[i][cur].len, token_maps[i][cur].data);
@@ -232,7 +237,7 @@ int main()
     printf("\n");
 
     // searching index
-    for(size_t file_idx = 0; file_idx < ArrayLen(files); file_idx++){
+    for(size_t file_idx = 0; file_idx < files_len; file_idx++){
         float rank = 0;
         for(size_t term_idx = 0; term_idx < ArrayLen(search_term); term_idx++){
             char *term = search_term[term_idx];
@@ -254,5 +259,9 @@ int main()
         }
         printf("%s: %f\n", files[file_idx], rank);
     }
+    fixed_arena_discard(&global_keys_arena);
+    fixed_arena_discard(&global_vals_arena);
+    fixed_arena_discard(&local_keys_arena);
+    fixed_arena_discard(&local_vals_arena);
     return 0;
 }

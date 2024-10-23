@@ -4,6 +4,9 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <dirent.h>
+// TODO(gerick): make my own utilties for this
+#include <string.h>
 // TODO(gerick): create my own logging system
 // TODO(gerick): create my own assertion function
 #include <assert.h>
@@ -41,11 +44,13 @@ struct FixedArena {
     void *data;
 };
 
+char **get_files_in_dir(Arena *arena, const char *path, size_t *file_count);
+
 ReadBuffer slurp_file_or_panic(const char *path);
 void unmap_buffer(ReadBuffer *buf);
 
 Arena arena_init();
-void *arena_alloc(size_t nbytes);
+void *arena_alloc(Arena *arena, size_t nbytes);
 
 FixedArena fixed_arena_init(size_t nbytes);
 void *fixed_arena_alloc(FixedArena *arena, size_t nbytes);
