@@ -145,6 +145,7 @@ void parse_file(Arena *arena, Str roam_buffer, Map *map, Map *global_map)
             str_shift_left(&roam_buffer));
 
         // extracting simple form of tokan into external arena
+        // FIX(gerick): at the end of a file we register an empty token.
         const size_t token_len = (size_t)roam_buffer.data - (size_t)token_start_loc;
         char* token_buf = (char*)arena_alloc(arena, token_len);
         for(size_t i = 0; i < token_len; i++){
@@ -180,7 +181,6 @@ void parse_file(Arena *arena, Str roam_buffer, Map *map, Map *global_map)
 
 int main()
 {
-
     FixedArena global_keys_arena = fixed_arena_init(sizeof(Str)*1024*1024);
     FixedArena global_vals_arena = fixed_arena_init(sizeof(size_t)*1024*1024);
     FixedArena local_keys_arena = fixed_arena_init(sizeof(Str)*1024*1024);
@@ -188,21 +188,9 @@ int main()
     Arena token_value_arena = arena_init();
     Arena file_name_arena = arena_init();
 
-    char search_term[][10] = {
-        "how", "to", "draw", "a", "rectangle", "to", "the", "screen"
-    };
     
     size_t files_len = 0;
     char **files = get_files_in_dir(&file_name_arena, "./pygame-docs/ref/", &files_len);
-    //const char *files[] = {
-    //    "./pygame-docs/ref/bufferproxy.html",
-    //    "./pygame-docs/ref/camera.html",
-    //    "./pygame-docs/ref/cdrom.html",
-    //    "./pygame-docs/ref/color_list.html",
-    //    "./pygame-docs/ref/display.html",
-    //    "./pygame-docs/ref/draw.html",
-    //    "./pygame-docs/ref/event.html",
-    //};
     // TODO(gerick): consider making this a hash table
     Map global_map = map_init(&global_keys_arena, &global_vals_arena);
     Map *maps = (Map*)arena_alloc(&file_name_arena, sizeof(Map)*files_len);
@@ -218,46 +206,59 @@ int main()
         maps[i] = map_init(&local_keys_arena, &local_vals_arena);
         assert(maps[i].len == 0);
         parse_file(&token_value_arena, roam_buffer, &(maps[i]), &global_map);
-        for(size_t cur = 0; cur < maps[i].len; cur++){
-            printf("(%.*s):(%zu)\n", (int)maps[i].keys[cur].len, maps[i].keys[cur].data, maps[i].vals[cur]);
-            // printf("(%.*s)\n", (int)token_maps[i][cur].len, token_maps[i][cur].data);
-        }
-        printf("================================================================\n");
         unmap_buffer(&file_buf);
     }
-    for(size_t cur = 0; cur < global_map.len; cur++){
-            printf("(%.*s):(%zu)\n", (int)global_map.keys[cur].len, global_map.keys[cur].data, global_map.vals[cur]);
-    }
 
-    printf("================================================================\n\n");
-    printf("search term: ");
-    for (size_t i = 0; i < ArrayLen(search_term); i++){
-        printf("%s ", search_term[i]);
-    }
-    printf("\n");
-
-    // searching index
-    for(size_t file_idx = 0; file_idx < files_len; file_idx++){
-        float rank = 0;
-        for(size_t term_idx = 0; term_idx < ArrayLen(search_term); term_idx++){
-            char *term = search_term[term_idx];
-            Map current_map = maps[file_idx];
-            float term_freq = 0;
-            float inverse_term_freq = 0;
-            size_t *map_val = NULL;
-
-            if((map_val = map_get(&current_map, STR(term))) != NULL){
-                term_freq = (float) *map_val;
+    // enter search term
+    char c = 0;
+    char search_term[100];
+    size_t search_term_idx = 0;
+    // TODO(gerick): move recieving input into the platform layer
+    putchar('>'); putchar(' ');
+    while((c = getchar()) != EOF){
+        if(c == '\n'){
+            search_term[search_term_idx] = 0;
+            printf("search term: ");
+            for (size_t i = 0; i <= search_term_idx;){
+                i += printf("%s ", &(search_term[i]));
             }
-            if((map_val = map_get(&global_map, STR(term))) != NULL){
-                inverse_term_freq = 1/((float) *map_val);
+            printf("\n");
+
+            // search index for search term
+            for(size_t file_idx = 0; file_idx < files_len; file_idx++){
+                float rank = 0;
+                for(size_t term_idx = 0; term_idx <= search_term_idx;){
+                    Str term = STR(&(search_term[term_idx]));
+                    Map current_map = maps[file_idx];
+                    float term_freq = 0;
+                    float inverse_term_freq = 0;
+                    size_t *map_val = NULL;
+
+                    if((map_val = map_get(&current_map, term)) != NULL){
+                        term_freq = (float) *map_val;
+                    }
+                    if((map_val = map_get(&global_map, term)) != NULL){
+                        inverse_term_freq = 1/((float) *map_val);
+                    }
+
+                    term_idx += term.len + 1;
+                    // printf("%s:\n", term);
+                    // printf("\tterm frequency: %f\n", term_freq);
+                    // printf("\tinverse document frequency: %f\n", inverse_term_freq);
+                    rank += term_freq*inverse_term_freq;
+                }
+                printf("%f: %s\n", rank, files[file_idx]);
             }
-            // printf("%s:\n", term);
-            // printf("\tterm frequency: %f\n", term_freq);
-            // printf("\tinverse document frequency: %f\n", inverse_term_freq);
-            rank += term_freq*inverse_term_freq;
+            putchar('>'); putchar(' ');
+            search_term_idx = 0;
+            continue;
         }
-        printf("%s: %f\n", files[file_idx], rank);
+        if(c == ' '){
+            search_term[search_term_idx] = 0;
+        } else {
+            search_term[search_term_idx] = c;
+        }
+        search_term_idx += 1;
     }
     fixed_arena_discard(&global_keys_arena);
     fixed_arena_discard(&global_vals_arena);
