@@ -191,6 +191,7 @@ int main()
     
     size_t files_len = 0;
     char **files = get_files_in_dir(&file_name_arena, "./pygame-docs/ref/", &files_len);
+    float *ranks = (float*)arena_alloc(&file_name_arena, sizeof(float)*files_len);
     // TODO(gerick): consider making this a hash table
     Map global_map = map_init(&global_keys_arena, &global_vals_arena);
     Map *maps = (Map*)arena_alloc(&file_name_arena, sizeof(Map)*files_len);
@@ -238,7 +239,7 @@ int main()
                         term_freq = (float) *map_val;
                     }
                     if((map_val = map_get(&global_map, term)) != NULL){
-                        inverse_term_freq = 1/((float) *map_val);
+                        inverse_term_freq = 1/((float) *map_val - term_freq);
                     }
 
                     term_idx += term.len + 1;
@@ -247,8 +248,21 @@ int main()
                     // printf("\tinverse document frequency: %f\n", inverse_term_freq);
                     rank += term_freq*inverse_term_freq;
                 }
-                printf("%f: %s\n", rank, files[file_idx]);
+                ranks[file_idx] = rank;
             }
+
+            bool marks[100] = {};
+            for(size_t result_num = 0; result_num < 10; result_num++){
+                size_t idx_of_max = 0;
+                for(size_t file_idx = 0; file_idx < files_len; file_idx++){
+                    if(ranks[file_idx] > ranks[idx_of_max] && !marks[file_idx]){
+                        idx_of_max = file_idx;
+                    }
+                }
+                marks[idx_of_max] = true;
+                printf("%f: %s\n", ranks[idx_of_max], files[idx_of_max]);
+            }
+
             putchar('>'); putchar(' ');
             search_term_idx = 0;
             continue;
