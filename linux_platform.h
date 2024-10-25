@@ -46,6 +46,8 @@ struct FixedArena {
 
 char **get_files_in_dir(Arena *arena, const char *path, size_t *file_count);
 
+void get_stdin(char *buffer, size_t buffer_len);
+
 ReadBuffer slurp_file_or_panic(const char *path);
 void unmap_buffer(ReadBuffer *buf);
 

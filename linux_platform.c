@@ -81,6 +81,11 @@ char **get_files_in_dir(Arena *arena, const char *path, size_t *file_count)
     return file_list;
 }
 
+void get_stdin(char *buffer, size_t buffer_len, size_t *bytes_read)
+{
+    *bytes_read = read(0, buffer, buffer_len);
+}
+
 Arena arena_init()
 {
     void* data = (void*)mmap(NULL, getpagesize(), PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);

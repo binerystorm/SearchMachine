@@ -179,16 +179,61 @@ void parse_file(Arena *arena, Str roam_buffer, Map *map, Map *global_map)
     }
 }
 
+void search_and_print(Str *search_term, size_t search_term_len,
+                      char** files, float *ranks, Map *maps, size_t files_len,
+                      Map *global_map)
+{
+
+    // TODO(gerick): either give marks an arena or change the sorting 
+    // algorithm to use linked lists.
+    // NOTE(gerick): marks marks a index as used by the sorting algorithm
+    // essentially removing it from the files list without the hasle of 
+    // of removing thing from an array;
+    bool marks[100] = {};
+
+    for(size_t file_idx = 0; file_idx < files_len; file_idx++){
+        float rank = 0;
+        for(size_t term_idx = 0; term_idx <= search_term_len; term_idx++){
+            Str term = search_term[term_idx];
+            Map current_map = maps[file_idx];
+            float term_freq = 0;
+            float inverse_term_freq = 0;
+            size_t *map_val = NULL;
+
+            if((map_val = map_get(&current_map, term)) != NULL){
+                term_freq = (float) *map_val;
+            }
+            if((map_val = map_get(global_map, term)) != NULL){
+                inverse_term_freq = 1/((float) *map_val - term_freq);
+            }
+            rank += term_freq*inverse_term_freq;
+        }
+        ranks[file_idx] = rank;
+    }
+
+    for(size_t result_num = 0; result_num < 10; result_num++){
+        size_t idx_of_max = 0;
+        for(size_t file_idx = 0; file_idx < files_len; file_idx++){
+            if(ranks[file_idx] > ranks[idx_of_max] && !marks[file_idx]){
+                idx_of_max = file_idx;
+            }
+        }
+        marks[idx_of_max] = true;
+        printf("%f: %s\n", ranks[idx_of_max], files[idx_of_max]);
+    }
+
+}
+
 int main()
 {
     FixedArena global_keys_arena = fixed_arena_init(sizeof(Str)*1024*1024);
     FixedArena global_vals_arena = fixed_arena_init(sizeof(size_t)*1024*1024);
     FixedArena local_keys_arena = fixed_arena_init(sizeof(Str)*1024*1024);
     FixedArena local_vals_arena = fixed_arena_init(sizeof(size_t)*1024*1024);
+    FixedArena io_arena = fixed_arena_init(1024);
     Arena token_value_arena = arena_init();
     Arena file_name_arena = arena_init();
 
-    
     size_t files_len = 0;
     char **files = get_files_in_dir(&file_name_arena, "./pygame-docs/ref/", &files_len);
     float *ranks = (float*)arena_alloc(&file_name_arena, sizeof(float)*files_len);
@@ -210,73 +255,78 @@ int main()
         unmap_buffer(&file_buf);
     }
 
-    // enter search term
-    char c = 0;
-    char search_term[100];
-    size_t search_term_idx = 0;
-    // TODO(gerick): move recieving input into the platform layer
-    putchar('>'); putchar(' ');
-    while((c = getchar()) != EOF){
-        if(c == '\n'){
-            search_term[search_term_idx] = 0;
-            printf("search term: ");
-            for (size_t i = 0; i <= search_term_idx;){
-                i += printf("%s ", &(search_term[i]));
-            }
-            printf("\n");
+    const size_t input_buffer_cap = 100;
+    size_t input_buffer_len = 0;
+    char *input_buffer = (char*)fixed_arena_alloc(&io_arena, input_buffer_cap);
+    // TODO(gerick): make more explicit way of saying that the rest of the arena is for 
+    // a some array in the arena system
+    Str *search_term = (Str*)fixed_arena_alloc(&io_arena, 0);
 
-            // search index for search term
-            for(size_t file_idx = 0; file_idx < files_len; file_idx++){
-                float rank = 0;
-                for(size_t term_idx = 0; term_idx <= search_term_idx;){
-                    Str term = STR(&(search_term[term_idx]));
-                    Map current_map = maps[file_idx];
-                    float term_freq = 0;
-                    float inverse_term_freq = 0;
-                    size_t *map_val = NULL;
-
-                    if((map_val = map_get(&current_map, term)) != NULL){
-                        term_freq = (float) *map_val;
-                    }
-                    if((map_val = map_get(&global_map, term)) != NULL){
-                        inverse_term_freq = 1/((float) *map_val - term_freq);
-                    }
-
-                    term_idx += term.len + 1;
-                    // printf("%s:\n", term);
-                    // printf("\tterm frequency: %f\n", term_freq);
-                    // printf("\tinverse document frequency: %f\n", inverse_term_freq);
-                    rank += term_freq*inverse_term_freq;
-                }
-                ranks[file_idx] = rank;
-            }
-
-            bool marks[100] = {};
-            for(size_t result_num = 0; result_num < 10; result_num++){
-                size_t idx_of_max = 0;
-                for(size_t file_idx = 0; file_idx < files_len; file_idx++){
-                    if(ranks[file_idx] > ranks[idx_of_max] && !marks[file_idx]){
-                        idx_of_max = file_idx;
-                    }
-                }
-                marks[idx_of_max] = true;
-                printf("%f: %s\n", ranks[idx_of_max], files[idx_of_max]);
-            }
-
-            putchar('>'); putchar(' ');
-            search_term_idx = 0;
-            continue;
+    while(true){
+        size_t search_term_idx = 0;
+        printf("> ");
+        fflush(stdout);
+        get_stdin(input_buffer, input_buffer_cap, &input_buffer_len);
+        if(input_buffer_len == input_buffer_cap &&
+            input_buffer[input_buffer_len - 1] != '\n'){
+            printf("Warning! tuncating inputed search string."
+                   " Input may be a maximum of %zu (including enter)",
+                   input_buffer_cap);
         }
-        if(c == ' '){
-            search_term[search_term_idx] = 0;
-        } else {
-            search_term[search_term_idx] = c;
+
+        for(size_t input_buffer_idx = 0;
+            input_buffer_idx < input_buffer_len;
+            input_buffer_idx++)
+        {
+            Str *current_term = &(search_term[search_term_idx]);
+            for(;is_space(input_buffer[input_buffer_idx]) &&
+                    input_buffer_idx < input_buffer_len;
+                input_buffer_idx++);
+            current_term->data = &(input_buffer[input_buffer_idx]);
+            for(;!is_space(input_buffer[input_buffer_idx]) &&
+                    input_buffer_idx < input_buffer_len;
+                input_buffer_idx++);
+            current_term->len = 
+                (size_t)&(input_buffer[input_buffer_idx]) - (size_t)current_term->data;
+
+            search_term_idx += 1;
         }
-        search_term_idx += 1;
+
+        search_and_print(search_term, search_term_idx + 1, 
+                         files, ranks, maps, files_len,
+                         &global_map);
+
     }
+    // enter search term
+    // char c = 0;
+    // char search_term[100];
+    // size_t search_term_idx = 0;
+    // putchar('>'); putchar(' ');
+    // while((c = getchar()) != EOF){
+    //     if(c == '\n'){
+    //         search_term[search_term_idx] = 0;
+    //         printf("search term: ");
+    //         for (size_t i = 0; i <= search_term_idx;){
+    //             i += printf("%s ", &(search_term[i]));
+    //         }
+    //         printf("\n");
+
+
+    //         putchar('>'); putchar(' ');
+    //         search_term_idx = 0;
+    //         continue;
+    //     }
+    //     if(c == ' '){
+    //         search_term[search_term_idx] = 0;
+    //     } else {
+    //         search_term[search_term_idx] = c;
+    //     }
+    //     search_term_idx += 1;
+    // }
     fixed_arena_discard(&global_keys_arena);
     fixed_arena_discard(&global_vals_arena);
     fixed_arena_discard(&local_keys_arena);
     fixed_arena_discard(&local_vals_arena);
+    fixed_arena_discard(&io_arena);
     return 0;
 }
