@@ -211,6 +211,7 @@ void search_and_print(Str *search_term, size_t search_term_len,
         ranks[file_idx] = rank;
     }
 
+    // TODO(gerick): file not marked when rank is supposed to be zero
     for(size_t result_num = 0; result_num < 10; result_num++){
         size_t idx_of_max = 0;
         for(size_t file_idx = 0; file_idx < files_len; file_idx++){
@@ -240,6 +241,12 @@ int main()
     // TODO(gerick): consider making this a hash table
     Map global_map = map_init(&global_keys_arena, &global_vals_arena);
     Map *maps = (Map*)arena_alloc(&file_name_arena, sizeof(Map)*files_len);
+
+    if(files == NULL){
+        printf("[ERR] no files available to be indexed, exiting...\n");
+        fflush(stdout);
+        assert(0);
+    }
 
     // indexing files
     for(size_t i = 0; i < files_len; i++){

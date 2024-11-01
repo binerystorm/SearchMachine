@@ -3,18 +3,36 @@
 ReadBuffer slurp_file_or_panic(const char *path)
 {
     struct stat st;
+    int fd;
+    int stat_exit_code;
+    char* data;
+    ReadBuffer failed = {0,0,0};
+
     // TODO(gerick): handle errors correctly in this whole function
-    int fd = open(path, O_RDONLY);
-    if (fd < 0){
-        assert(false && "opening file failed");
+    // int fd = open(path, O_RDONLY);
+    if ((fd = open(path, O_RDONLY)) < 0){
+        printf("[WARN] Skipping, could not open %s: %s\n",path, strerror(errno));
+        return failed;
     }
-    int stat_exit_code = stat(path, &st);
-    if (stat_exit_code != 0){
-        assert(false && "retrieving status of file failed");
+    // int stat_exit_code = stat(path, &st);
+    if((stat_exit_code = stat(path, &st)) != 0){
+        printf("[WARN] Skipping, could not retrieve file status %s: %s\n", path, strerror(errno));
+        return failed;
+        // assert(false && "retrieving status of file failed");
+    }
+    if ((st.st_mode & S_IFMT) != S_IFREG){
+        printf("[INFO] Skipping %s is not a file\n", path);
+        return failed;
     }
     assert(st.st_size >= 0 && "file has negative size???");
+
+    if((data = (char*)mmap(NULL, st.st_size, PROT_READ, MAP_PRIVATE, fd, 0)) == MAP_FAILED){
+        printf("[ERR] could not allocate memory: %s\n", strerror(errno));
+        assert(false);
+    }
+
     ReadBuffer ret = {
-        (char*)mmap(NULL, st.st_size, PROT_READ, MAP_PRIVATE, fd, 0),
+        data,
         (size_t)st.st_size,
         false
     };
@@ -30,16 +48,58 @@ void unmap_buffer(ReadBuffer *buf)
 
 char **get_files_in_dir(Arena *arena, const char *path, size_t *file_count)
 {
+    DIR *dir_hdl;
+    struct dirent *entry;
+    size_t entry_count = 0;
+
+    if((dir_hdl = opendir(path)) == NULL){
+        printf("[WARN] could not open %s: %s\n", path, strerror(errno));
+        return NULL;
+    }
+
+    errno = 0;
+    while((entry = readdir(dir_hdl)) != NULL){
+        entry_count += 1;
+    }
+    assert(errno == 0 && "all `readdir` errors are mistakes in program"
+           "and out of user control");
+
+    char **file_list = (char**)arena_alloc(arena, sizeof(char**) * entry_count);
+    rewinddir(dir_hdl);
+
+    for(size_t i = 0; i < entry_count; i++){
+        entry = readdir(dir_hdl);
+        assert(errno == 0 && entry != NULL);
+        // NOTE(gerick): +1 is for the NULL byte at the end of the cstr after concatination.
+        const size_t path_len = strlen(path) + strlen(entry->d_name) + 1;
+        file_list[i] = (char*)arena_alloc(arena, path_len);
+        strcpy(file_list[i], path);
+        strcat(file_list[i], entry->d_name);
+    }
+    *file_count = entry_count;
+    closedir(dir_hdl);
+    return file_list;
+}
+
+char **get_files_in_dir2(Arena *arena, const char *path, size_t *file_count)
+{
     // TODO(gerick): handle errors properly
-    DIR *dir_hdl = opendir(path);
-    long start_loc = telldir(dir_hdl);
+    DIR *dir_hdl;
+    // long start_loc = telldir(dir_hdl);
     struct dirent *entry;
     struct stat st;
     size_t entry_count = 0;
+
+    // dir_hdl = opendir(path);
+    if((dir_hdl = opendir(path)) == NULL){
+        printf("[WARN] could not open %s: %s\n", path, strerror(errno));
+        return NULL;
+    }
     errno = 0;
     while(true){
         entry = readdir(dir_hdl);
-        assert(errno == 0);
+        assert(errno == 0 && "all `readdir` errors are mistakes in program"
+               "and out of user control");
         if(entry == NULL){break;}
 
         const size_t path_len = strlen(path) + strlen(entry->d_name) + 1;
@@ -47,7 +107,11 @@ char **get_files_in_dir(Arena *arena, const char *path, size_t *file_count)
 
         strcpy(file_name_buf, path);
         strcat(file_name_buf, entry->d_name);
-        assert(stat(file_name_buf, &st) == 0);
+        if(stat(file_name_buf, &st) != 0){
+            continue;
+            assert((arena->top - sizeof(void**)) >= path_len);
+            arena->top -= path_len;
+        }
         if ((st.st_mode & S_IFMT) == S_IFREG){
             entry_count += 1;
         }
@@ -59,7 +123,8 @@ char **get_files_in_dir(Arena *arena, const char *path, size_t *file_count)
     }
 
     char **file_list = (char**)arena_alloc(arena, entry_count * sizeof(char*));
-    seekdir(dir_hdl, start_loc);
+    //seekdir(dir_hdl, start_loc);
+    rewinddir(dir_hdl);
     for(size_t idx = 0; idx < entry_count;) {
         entry = readdir(dir_hdl);
         assert(errno == 0 && entry != NULL);
