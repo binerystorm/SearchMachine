@@ -4,7 +4,8 @@
 // TODO(gerick): create my own assertion function
 //#include <assert.h>
 
-#include "linux_platform.h"
+#include "glibc_platform.h"
+#include "glibc_log.c"
 
 #define ArrayLen(ARR) sizeof((ARR))/sizeof((ARR)[0])
 
@@ -24,7 +25,7 @@ struct Map {
     size_t len;
 };
 
-#include "linux_platform.c"
+#include "glibc_platform.c"
 
 #define STR(cstr) (Str){(cstr), cstr_len((cstr))}
 size_t cstr_len(const char *str)
@@ -227,6 +228,10 @@ void search_and_print(Str *search_term, size_t search_term_len,
 
 int main()
 {
+    ERROR("hello world %d", 69);
+    WARN("This is a %s", "warning");
+    INFO("Vex.x = %f", 1.4356f);
+    Assert(false, "Does it work %d", 69);
     FixedArena global_keys_arena = fixed_arena_init(sizeof(Str)*1024*1024);
     FixedArena global_vals_arena = fixed_arena_init(sizeof(size_t)*1024*1024);
     FixedArena local_keys_arena = fixed_arena_init(sizeof(Str)*1024*1024);
@@ -302,34 +307,8 @@ int main()
         search_and_print(search_term, search_term_idx + 1, 
                          files, ranks, maps, files_len,
                          &global_map);
-
     }
-    // enter search term
-    // char c = 0;
-    // char search_term[100];
-    // size_t search_term_idx = 0;
-    // putchar('>'); putchar(' ');
-    // while((c = getchar()) != EOF){
-    //     if(c == '\n'){
-    //         search_term[search_term_idx] = 0;
-    //         printf("search term: ");
-    //         for (size_t i = 0; i <= search_term_idx;){
-    //             i += printf("%s ", &(search_term[i]));
-    //         }
-    //         printf("\n");
 
-
-    //         putchar('>'); putchar(' ');
-    //         search_term_idx = 0;
-    //         continue;
-    //     }
-    //     if(c == ' '){
-    //         search_term[search_term_idx] = 0;
-    //     } else {
-    //         search_term[search_term_idx] = c;
-    //     }
-    //     search_term_idx += 1;
-    // }
     fixed_arena_discard(&global_keys_arena);
     fixed_arena_discard(&global_vals_arena);
     fixed_arena_discard(&local_keys_arena);

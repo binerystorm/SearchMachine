@@ -11,7 +11,7 @@
 // TODO(gerick): create my own assertion function
 #include <assert.h>
 
-#define Assert(pred) do{if(!(pred)){*(char*)NULL = 0;}}while(0)
+// #define Assert(pred) do{if(!(pred)){*(char*)NULL = 0;}}while(0)
 // TODO(gerick): maybe pull these typedefs into a comman types file
 typedef unsigned char uint8;
 typedef unsigned long long uint64;

@@ -1,4 +1,4 @@
-#include "linux_platform.h"
+#include "glibc_platform.h"
 
 ReadBuffer slurp_file_or_panic(const char *path)
 {
