@@ -11,24 +11,23 @@ ReadBuffer slurp_file_or_panic(const char *path)
     // TODO(gerick): handle errors correctly in this whole function
     // int fd = open(path, O_RDONLY);
     if ((fd = open(path, O_RDONLY)) < 0){
-        printf("[WARN] Skipping, could not open %s: %s\n",path, strerror(errno));
+        WARN("Skipping, could not open %s: %s", path, strerror(errno));
         return failed;
     }
     // int stat_exit_code = stat(path, &st);
     if((stat_exit_code = stat(path, &st)) != 0){
-        printf("[WARN] Skipping, could not retrieve file status %s: %s\n", path, strerror(errno));
+        WARN("Skipping, could not retrieve file status %s: %s", path, strerror(errno));
         return failed;
-        // assert(false && "retrieving status of file failed");
     }
     if ((st.st_mode & S_IFMT) != S_IFREG){
-        printf("[INFO] Skipping %s is not a file\n", path);
+        INFO("Skipping %s is not a file", path);
         return failed;
     }
-    assert(st.st_size >= 0 && "file has negative size???");
+    Assert(st.st_size >= 0, "file has negative size???");
 
     if((data = (char*)mmap(NULL, st.st_size, PROT_READ, MAP_PRIVATE, fd, 0)) == MAP_FAILED){
-        printf("[ERR] could not allocate memory: %s\n", strerror(errno));
-        assert(false);
+        ERROR("Could not allocate memory: %s", strerror(errno));
+        Assert(false, "TODO: make better exit system");
     }
 
     ReadBuffer ret = {
@@ -53,7 +52,7 @@ char **get_files_in_dir(Arena *arena, const char *path, size_t *file_count)
     size_t entry_count = 0;
 
     if((dir_hdl = opendir(path)) == NULL){
-        printf("[WARN] could not open %s: %s\n", path, strerror(errno));
+        WARN("Could not open %s: %s", path, strerror(errno));
         return NULL;
     }
 
@@ -61,7 +60,7 @@ char **get_files_in_dir(Arena *arena, const char *path, size_t *file_count)
     while((entry = readdir(dir_hdl)) != NULL){
         entry_count += 1;
     }
-    assert(errno == 0 && "all `readdir` errors are mistakes in program"
+    Assert(errno == 0, "all `readdir` errors are mistakes in program"
            "and out of user control");
 
     char **file_list = (char**)arena_alloc(arena, sizeof(char**) * entry_count);
@@ -69,7 +68,7 @@ char **get_files_in_dir(Arena *arena, const char *path, size_t *file_count)
 
     for(size_t i = 0; i < entry_count; i++){
         entry = readdir(dir_hdl);
-        assert(errno == 0 && entry != NULL);
+        Assert(errno == 0 && entry != NULL, "We have already cheacked for errors, one should not occur now");
         // NOTE(gerick): +1 is for the NULL byte at the end of the cstr after concatination.
         const size_t path_len = strlen(path) + strlen(entry->d_name) + 1;
         file_list[i] = (char*)arena_alloc(arena, path_len);
@@ -92,13 +91,13 @@ char **get_files_in_dir2(Arena *arena, const char *path, size_t *file_count)
 
     // dir_hdl = opendir(path);
     if((dir_hdl = opendir(path)) == NULL){
-        printf("[WARN] could not open %s: %s\n", path, strerror(errno));
+        WARN("Could not open %s: %s", path, strerror(errno));
         return NULL;
     }
     errno = 0;
     while(true){
         entry = readdir(dir_hdl);
-        assert(errno == 0 && "all `readdir` errors are mistakes in program"
+        Assert(errno == 0, "all `readdir` errors are mistakes in program"
                "and out of user control");
         if(entry == NULL){break;}
 
@@ -109,13 +108,13 @@ char **get_files_in_dir2(Arena *arena, const char *path, size_t *file_count)
         strcat(file_name_buf, entry->d_name);
         if(stat(file_name_buf, &st) != 0){
             continue;
-            assert((arena->top - sizeof(void**)) >= path_len);
+            Assert((arena->top - sizeof(void**)) >= path_len, "");
             arena->top -= path_len;
         }
         if ((st.st_mode & S_IFMT) == S_IFREG){
             entry_count += 1;
         }
-        assert((arena->top - sizeof(void**)) >= path_len);
+        Assert((arena->top - sizeof(void**)) >= path_len, "");
         arena->top -= path_len;
     }
     if(entry_count == 0){
@@ -127,18 +126,18 @@ char **get_files_in_dir2(Arena *arena, const char *path, size_t *file_count)
     rewinddir(dir_hdl);
     for(size_t idx = 0; idx < entry_count;) {
         entry = readdir(dir_hdl);
-        assert(errno == 0 && entry != NULL);
+        Assert(errno == 0 && entry != NULL, "");
         // NOTE(gerick): +1 is for the NULL byte at the end of the cstr after concatination.
         const size_t path_len = strlen(path) + strlen(entry->d_name) + 1;
         file_list[idx] = (char*)arena_alloc(arena, path_len);
         strcpy(file_list[idx], path);
         strcat(file_list[idx], entry->d_name);
-        assert(stat(file_list[idx], &st) == 0);
+        Assert(stat(file_list[idx], &st) == 0, "");
         if ((st.st_mode & S_IFMT) == S_IFREG){
             idx++;
         } else {
             //entry_count -= 1;
-            assert((arena->top - sizeof(void**)) >= path_len);
+            Assert((arena->top - sizeof(void**)) >= path_len, "");
             arena->top -= path_len;
         }
     }
@@ -184,8 +183,8 @@ void *arena_alloc(Arena *arena, size_t nbytes)
     }
     void *ret = (void*) ((uint64)arena->data + (uint64)arena->top);
     arena->top += nbytes;
-    assert((uint64)ret % (uint64)8 == 0);
-    assert(arena->top < arena->cap);
+    Assert((uint64)ret % (uint64)8 == 0, "Make sure our allocation is 8 byte alighned");
+    Assert(arena->top < arena->cap, "Make sure the arena size does not supercede its maximum size");
     return ret;
 }
 // TODO(gerick): Add arena free function, to unmap whole arena
@@ -206,7 +205,7 @@ void *fixed_arena_alloc(FixedArena *arena, size_t nbytes)
     // so the rest of the program can handle it
     // NOTE(gerick): test code!!! relies on the user only allocating one data
     // type per arena
-    assert((arena->top + nbytes) < arena->cap);
+    Assert((arena->top + nbytes) < arena->cap, "Make sure the new arena size does not excede max size of the arena");
     void *ret = (void*)((uint64)arena->data + (uint64)arena->top);
     arena->top += nbytes;
     return ret;

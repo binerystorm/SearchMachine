@@ -4,8 +4,8 @@
 // TODO(gerick): create my own assertion function
 //#include <assert.h>
 
-#include "glibc_platform.h"
 #include "glibc_log.c"
+#include "glibc_platform.h"
 
 #define ArrayLen(ARR) sizeof((ARR))/sizeof((ARR)[0])
 
@@ -98,8 +98,8 @@ static void map_insert(Map *map, Str key, size_t val)
     Str *new_key = (Str*)fixed_arena_alloc(map->keys_arena, sizeof(Str));
     size_t *new_val = (size_t*)fixed_arena_alloc(map->vals_arena, sizeof(size_t));
 
-    assert((Str*)((size_t)map->keys + (map->len * sizeof(Str))) == new_key);
-    assert((size_t*)((size_t)map->vals + (map->len * sizeof(size_t))) == new_val);
+    Assert((Str*)((size_t)map->keys + (map->len * sizeof(Str))) == new_key, "Assume length of map keys and vals are equal");
+    Assert((size_t*)((size_t)map->vals + (map->len * sizeof(size_t))) == new_val, "Assume length of map keys and vals are equal");
     map->len += 1;
 
     *new_key = key;
@@ -174,7 +174,7 @@ void parse_file(Arena *arena, Str roam_buffer, Map *map, Map *global_map)
                 *local_val += 1;
             }
             // TODO(gerick): Create proper scratch buffer system
-            assert((arena->top - sizeof(void**)) >= token.len);
+            Assert((arena->top - sizeof(void**)) >= token.len, "Make sure the scratch doesnt corrupt ptr to prev block");
             arena->top -= token.len;
         }
     }
@@ -221,6 +221,7 @@ void search_and_print(Str *search_term, size_t search_term_len,
             }
         }
         marks[idx_of_max] = true;
+        // TODO(gerick): replace with a platform layer function
         printf("%f: %s\n", ranks[idx_of_max], files[idx_of_max]);
     }
 
@@ -228,10 +229,6 @@ void search_and_print(Str *search_term, size_t search_term_len,
 
 int main()
 {
-    ERROR("hello world %d", 69);
-    WARN("This is a %s", "warning");
-    INFO("Vex.x = %f", 1.4356f);
-    Assert(false, "Does it work %d", 69);
     FixedArena global_keys_arena = fixed_arena_init(sizeof(Str)*1024*1024);
     FixedArena global_vals_arena = fixed_arena_init(sizeof(size_t)*1024*1024);
     FixedArena local_keys_arena = fixed_arena_init(sizeof(Str)*1024*1024);
@@ -241,6 +238,7 @@ int main()
     Arena file_name_arena = arena_init();
 
     size_t files_len = 0;
+    INFO("Finding files...");
     char **files = get_files_in_dir(&file_name_arena, "./pygame-docs/ref/", &files_len);
     float *ranks = (float*)arena_alloc(&file_name_arena, sizeof(float)*files_len);
     // TODO(gerick): consider making this a hash table
@@ -248,9 +246,9 @@ int main()
     Map *maps = (Map*)arena_alloc(&file_name_arena, sizeof(Map)*files_len);
 
     if(files == NULL){
-        printf("[ERR] no files available to be indexed, exiting...\n");
+        ERROR("No files available to be indexed, exiting...");
         fflush(stdout);
-        assert(0);
+        Assert(0, "TODO: Make clean exit");
     }
 
     // indexing files
@@ -262,7 +260,7 @@ int main()
             file_buf.cap
         };
         maps[i] = map_init(&local_keys_arena, &local_vals_arena);
-        assert(maps[i].len == 0);
+        Assert(maps[i].len == 0, "Map must have changed and must not be tampered with.");
         parse_file(&token_value_arena, roam_buffer, &(maps[i]), &global_map);
         unmap_buffer(&file_buf);
     }
@@ -276,12 +274,13 @@ int main()
 
     while(true){
         size_t search_term_idx = 0;
+        // TODO(gerick): replace with platform level function
         printf("> ");
         fflush(stdout);
         get_stdin(input_buffer, input_buffer_cap, &input_buffer_len);
         if(input_buffer_len == input_buffer_cap &&
             input_buffer[input_buffer_len - 1] != '\n'){
-            printf("Warning! tuncating inputed search string."
+            WARN("Truncating inputed search string."
                    " Input may be a maximum of %zu (including enter)",
                    input_buffer_cap);
         }

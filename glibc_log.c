@@ -41,9 +41,9 @@ void platform_assert(
 const char* level_to_str(Log_Level level)
 {
     switch(level){
-        case LOG_INFO: return "[INFO]";
-        case LOG_WARN: return "[WARN]";
-        case LOG_ERR: return "[ERR]";
+        case LOG_INFO: return "[\x1b[36mINFO\x1b[0m]";
+        case LOG_WARN: return "[\x1b[33mWARN\x1b[0m]";
+        case LOG_ERR: return "[\x1b[31mERR\x1b[0m]";
         default: printf("Unreachable"); exit(1);
     }
 }
