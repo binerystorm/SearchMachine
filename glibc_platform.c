@@ -1,4 +1,5 @@
 #include "glibc_platform.h"
+#include "defer.h"
 
 ReadBuffer slurp_file_or_panic(const char *path)
 {
@@ -14,16 +15,19 @@ ReadBuffer slurp_file_or_panic(const char *path)
         WARN("Skipping, could not open %s: %s", path, strerror(errno));
         return failed;
     }
+    defer(
+        close(fd);
+    );
     // int stat_exit_code = stat(path, &st);
     if((stat_exit_code = stat(path, &st)) != 0){
         WARN("Skipping, could not retrieve file status %s: %s", path, strerror(errno));
         // FIX(gerick): open file descripter is never closed if this failure is reached
-        return failed;
+        return(failed);
     }
     if ((st.st_mode & S_IFMT) != S_IFREG){
         // FIX(gerick): open file descripter is never closed if this failure is reached
         INFO("Skipping %s is not a file", path);
-        return failed;
+        return(failed);
     }
     Assert(st.st_size >= 0, "file has negative size???");
 
@@ -37,8 +41,7 @@ ReadBuffer slurp_file_or_panic(const char *path)
         (size_t)st.st_size,
         false
     };
-    close(fd);
-    return ret;
+    return(ret);
 }
 
 void unmap_buffer(ReadBuffer *buf)
@@ -57,6 +60,9 @@ char **get_files_in_dir(Arena *arena, const char *path, size_t *file_count)
         WARN("Could not open %s: %s", path, strerror(errno));
         return NULL;
     }
+    defer(
+        closedir(dir_hdl);
+    );
 
     errno = 0;
     while((entry = readdir(dir_hdl)) != NULL){
@@ -78,8 +84,7 @@ char **get_files_in_dir(Arena *arena, const char *path, size_t *file_count)
         strcat(file_list[i], entry->d_name);
     }
     *file_count = entry_count;
-    closedir(dir_hdl);
-    return file_list;
+    return(file_list);
 }
 
 char **get_files_in_dir2(Arena *arena, const char *path, size_t *file_count)
@@ -96,6 +101,9 @@ char **get_files_in_dir2(Arena *arena, const char *path, size_t *file_count)
         WARN("Could not open %s: %s", path, strerror(errno));
         return NULL;
     }
+    defer(
+        closedir(dir_hdl);
+    );
     errno = 0;
     while(true){
         entry = readdir(dir_hdl);
@@ -120,7 +128,7 @@ char **get_files_in_dir2(Arena *arena, const char *path, size_t *file_count)
         arena->top -= path_len;
     }
     if(entry_count == 0){
-        return NULL;
+        return(NULL);
     }
 
     char **file_list = (char**)arena_alloc(arena, entry_count * sizeof(char*));
@@ -144,7 +152,7 @@ char **get_files_in_dir2(Arena *arena, const char *path, size_t *file_count)
         }
     }
     *file_count = entry_count;
-    return file_list;
+    return(file_list);
 }
 
 void get_stdin(char *buffer, size_t buffer_len, size_t *bytes_read)

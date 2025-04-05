@@ -20,6 +20,18 @@ struct ReadBuffer {
     bool unmapped;
 };
 
+/*
+// #define defer_set_return(TYPE) TYPE __defer_return_value
+// #define defer(STATMENT) do{goto after;\
+// defer: \
+// STATMENT \
+// return __defer_return_value; \
+// after:\
+// }while(0)
+
+// #define defer_return(VALUE) do{__defer_return_value = (VALUE); goto defer;}while(0)
+*/
+
 //NOTE(gerick): arena meta data always stores the meta
 // data for the current block. the first 8 bytes of the 
 // current block store the start location of the previos
