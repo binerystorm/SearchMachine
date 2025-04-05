@@ -1,5 +1,5 @@
-#ifndef LINUX_PLATFORM_H_
-#define LINUX_PLATFORM_H_
+#ifndef GLIBC_PLATFORM_H_
+#define GLIBC_PLATFORM_H_
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <fcntl.h>
@@ -54,4 +54,4 @@ void *arena_alloc(Arena *arena, size_t nbytes);
 FixedArena fixed_arena_init(size_t nbytes);
 void *fixed_arena_alloc(FixedArena *arena, size_t nbytes);
 void fixed_arena_discard(FixedArena *arena);
-#endif // LINUX_PLATFORM_H_
+#endif // GLIBC_PLATFORM_H_

@@ -1,6 +1,16 @@
 #include <stdio.h>
 #include <stdarg.h>
 
+// NOTE(gerick): this logging implementation has given in to using c stdlib functions for io and 
+// exiting. This could cause conflicts when allocating memory with `mmap`. But I doubt it.
+
+// TODO(gerick): reasearch whether allocating memory with mmap will conflict with allocating memory
+// with malloc, calloc etc.
+
+// TODO(gerick): research whether printf buffer is flushed when a printf function encounters a
+// newline or whether I sucked that out of my thumb.
+// This is of very low importance
+
 enum Log_Level {
     LOG_INFO,
     LOG_WARN,
@@ -58,4 +68,7 @@ void platform_log(Log_Level level, FILE *file,
     vfprintf(file, format, args);
     fprintf(file, "\n");
     va_end(args);
+    // NOTE(gerick): I believe that the file buffer is flushed when in encounters a newline
+    // but I flush the file again just incase I am misinformed
+    fflush(file);
 }

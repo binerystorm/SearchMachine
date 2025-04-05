@@ -17,9 +17,11 @@ ReadBuffer slurp_file_or_panic(const char *path)
     // int stat_exit_code = stat(path, &st);
     if((stat_exit_code = stat(path, &st)) != 0){
         WARN("Skipping, could not retrieve file status %s: %s", path, strerror(errno));
+        // FIX(gerick): open file descripter is never closed if this failure is reached
         return failed;
     }
     if ((st.st_mode & S_IFMT) != S_IFREG){
+        // FIX(gerick): open file descripter is never closed if this failure is reached
         INFO("Skipping %s is not a file", path);
         return failed;
     }
@@ -205,7 +207,7 @@ void *fixed_arena_alloc(FixedArena *arena, size_t nbytes)
     // so the rest of the program can handle it
     // NOTE(gerick): test code!!! relies on the user only allocating one data
     // type per arena
-    Assert((arena->top + nbytes) < arena->cap, "Make sure the new arena size does not excede max size of the arena");
+    Assert((arena->top + nbytes) < arena->cap, "Make sure the arena's new size does not excede the max size of the arena.");
     void *ret = (void*)((uint64)arena->data + (uint64)arena->top);
     arena->top += nbytes;
     return ret;
