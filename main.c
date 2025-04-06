@@ -117,6 +117,7 @@ Map map_init(FixedArena *const keys_arena, FixedArena *const vals_arena)
     };
 }
 
+// FIX Parsing creates empty tokens. Which are put in the maps. This problem occurs in `parse_file`
 void parse_file(Arena *arena, Str roam_buffer, Map *map, Map *global_map)
 {
     // TODO(gerick): Make better html parser
@@ -148,6 +149,7 @@ void parse_file(Arena *arena, Str roam_buffer, Map *map, Map *global_map)
         // extracting simple form of tokan into external arena
         // FIX(gerick): at the end of a file we register an empty token.
         const size_t token_len = (size_t)roam_buffer.data - (size_t)token_start_loc;
+        if (token_len == 0) continue;
         char* token_buf = (char*)arena_alloc(arena, token_len);
         for(size_t i = 0; i < token_len; i++){
             char c = token_start_loc[i];
@@ -181,7 +183,7 @@ void parse_file(Arena *arena, Str roam_buffer, Map *map, Map *global_map)
 }
 
 void search_and_print(Str *search_term, size_t search_term_len,
-                      char** files, float *ranks, Map *maps, size_t files_len,
+                      char** files, Map *maps, size_t files_len,
                       Map *global_map)
 {
 
@@ -190,11 +192,15 @@ void search_and_print(Str *search_term, size_t search_term_len,
     // NOTE(gerick): marks marks a index as used by the sorting algorithm
     // essentially removing it from the files list without the hasle of 
     // of removing thing from an array;
-    bool marks[100] = {};
-
+    bool marks[100] = {0};
+    float ranks[500] = {0};
+    printf("%zu\n", search_term_len);
+    for(size_t i = 0; i < search_term_len; i++){
+        printf("%.*s\n", (int)search_term[i].len, search_term[i].data);
+    }
     for(size_t file_idx = 0; file_idx < files_len; file_idx++){
         float rank = 0;
-        for(size_t term_idx = 0; term_idx <= search_term_len; term_idx++){
+        for(size_t term_idx = 0; term_idx < search_term_len; term_idx++){
             Str term = search_term[term_idx];
             Map current_map = maps[file_idx];
             float term_freq = 0;
@@ -212,7 +218,8 @@ void search_and_print(Str *search_term, size_t search_term_len,
         ranks[file_idx] = rank;
     }
 
-    // TODO(gerick): file not marked when rank is supposed to be zero
+    // TODO(gerick): something fishy here
+    // files are not sorted when ranks of files being compared are both zero
     for(size_t result_num = 0; result_num < 10; result_num++){
         size_t idx_of_max = 0;
         for(size_t file_idx = 0; file_idx < files_len; file_idx++){
@@ -227,6 +234,7 @@ void search_and_print(Str *search_term, size_t search_term_len,
 
 }
 
+
 int main()
 {
     FixedArena global_keys_arena = fixed_arena_init(sizeof(Str)*1024*1024);
@@ -240,7 +248,7 @@ int main()
     size_t files_len = 0;
     INFO("Finding files...");
     char **files = get_files_in_dir(&file_name_arena, "./pygame-docs/ref/", &files_len);
-    float *ranks = (float*)arena_alloc(&file_name_arena, sizeof(float)*files_len);
+    // float *ranks = (float*)arena_alloc(&file_name_arena, sizeof(float)*files_len);
     // TODO(gerick): consider making this a hash table
     Map global_map = map_init(&global_keys_arena, &global_vals_arena);
     Map *maps = (Map*)arena_alloc(&file_name_arena, sizeof(Map)*files_len);
@@ -273,7 +281,7 @@ int main()
     Str *search_term = (Str*)fixed_arena_alloc(&io_arena, 0);
 
     while(true){
-        size_t search_term_idx = 0;
+        size_t search_term_idx;
         // TODO(gerick): replace with platform level function
         printf("> ");
         fflush(stdout);
@@ -285,6 +293,7 @@ int main()
                    input_buffer_cap);
         }
 
+        search_term_idx = 0;
         for(size_t input_buffer_idx = 0;
             input_buffer_idx < input_buffer_len;
             input_buffer_idx++)
@@ -299,12 +308,13 @@ int main()
                 input_buffer_idx++);
             current_term->len = 
                 (size_t)&(input_buffer[input_buffer_idx]) - (size_t)current_term->data;
+            if (current_term->len == 0) break;
 
             search_term_idx += 1;
         }
 
-        search_and_print(search_term, search_term_idx + 1, 
-                         files, ranks, maps, files_len,
+        search_and_print(search_term, search_term_idx, 
+                         files, maps, files_len,
                          &global_map);
     }
 

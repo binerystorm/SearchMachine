@@ -9,8 +9,6 @@ ReadBuffer slurp_file_or_panic(const char *path)
     char* data;
     ReadBuffer failed = {0,0,0};
 
-    // TODO(gerick): handle errors correctly in this whole function
-    // int fd = open(path, O_RDONLY);
     if ((fd = open(path, O_RDONLY)) < 0){
         WARN("Skipping, could not open %s: %s", path, strerror(errno));
         return failed;
@@ -21,11 +19,9 @@ ReadBuffer slurp_file_or_panic(const char *path)
     // int stat_exit_code = stat(path, &st);
     if((stat_exit_code = stat(path, &st)) != 0){
         WARN("Skipping, could not retrieve file status %s: %s", path, strerror(errno));
-        // FIX(gerick): open file descripter is never closed if this failure is reached
         return(failed);
     }
     if ((st.st_mode & S_IFMT) != S_IFREG){
-        // FIX(gerick): open file descripter is never closed if this failure is reached
         INFO("Skipping %s is not a file", path);
         return(failed);
     }
