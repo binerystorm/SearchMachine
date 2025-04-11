@@ -1,6 +1,8 @@
 #include <stdio.h>
 #include <errno.h>
 #include <stdlib.h>
+// TODO(gerick): write my own log aproximation funtion
+#include <math.h>
 // TODO(gerick): create my own assertion function
 //#include <assert.h>
 
@@ -118,8 +120,9 @@ Map map_init(FixedArena *const keys_arena, FixedArena *const vals_arena)
 }
 
 // FIX Parsing creates empty tokens. Which are put in the maps. This problem occurs in `parse_file`
-void parse_file(Arena *arena, Str roam_buffer, Map *map, Map *global_map)
+void parse_file(Arena *arena, Str roam_buffer, Map *map, Map *global_map, size_t *token_count)
 {
+    *token_count = 0;
     // TODO(gerick): Make better html parser
     while(roam_buffer.len > 0){
         for(;
@@ -162,6 +165,24 @@ void parse_file(Arena *arena, Str roam_buffer, Map *map, Map *global_map)
             token_buf,
             token_len
         };
+
+        ////////
+
+        (*token_count)++;
+        size_t *local_val = map_get(map, token);
+        if(local_val == NULL){
+            size_t *global_val;
+            map_insert(map, token, 1);
+            
+            if ((global_val = map_get(global_map, token)) == NULL){
+                map_insert(global_map, token, 1);
+            } else {
+                *global_val += 1;
+            }
+        }else{
+            *local_val += 1;
+        }
+        /*
         size_t *global_val = map_get(global_map, token);
         if(global_val == NULL){
             map_insert(global_map, token, 1);
@@ -179,6 +200,54 @@ void parse_file(Arena *arena, Str roam_buffer, Map *map, Map *global_map)
             Assert((arena->top - sizeof(void**)) >= token.len, "Make sure the scratch doesnt corrupt ptr to prev block");
             arena->top -= token.len;
         }
+        */
+    }
+}
+
+void tfidf_search_and_print(Str *search_term, size_t search_term_len,
+                      char** files, Map *maps, size_t *token_counts, size_t files_len,
+                      Map *global_map)
+{
+    Assert(files_len > 0, "expect atleast one file to search through");
+    bool marks[100] = {0};
+    float ranks[500] = {0};
+    // Ranking files
+    for(size_t file_idx = 0; file_idx < files_len; file_idx++){
+        // NOTE: file empty, nothing to see here
+        if(token_counts[file_idx] == 0) continue;
+
+        float rank = 0;
+        for(size_t term_idx = 0; term_idx < search_term_len; term_idx++){
+            Str term = search_term[term_idx];
+            Map current_map = maps[file_idx];
+            float term_freq = 0;
+            float inverse_doc_freq = 0;
+            size_t *map_val = NULL;
+
+            if((map_val = map_get(&current_map, term)) != NULL){
+                Assert(token_counts[file_idx] > 0, "this function assumes the file has lenth");
+                term_freq = (float) *map_val / (float)token_counts[file_idx];
+            }
+            if((map_val = map_get(global_map, term)) != NULL){
+                Assert(*map_val > 0, "term occurence in the corpus should not be negative");
+                inverse_doc_freq = logf((float)files_len / (float)*map_val);
+            }
+            rank += term_freq*inverse_doc_freq;
+        }
+        ranks[file_idx] = rank;
+    }
+
+    // Sorting file based on their rank.
+    for(size_t result_num = 0; result_num < 10; result_num++){
+        size_t idx_of_max = 0;
+        for(size_t file_idx = 0; file_idx < files_len; file_idx++){
+            if(ranks[file_idx] > ranks[idx_of_max] && !marks[file_idx]){
+                idx_of_max = file_idx;
+            }
+        }
+        marks[idx_of_max] = true;
+        // TODO(gerick): replace with a platform layer function
+        printf("%f: %s\n", ranks[idx_of_max], files[idx_of_max]);
     }
 }
 
@@ -252,6 +321,7 @@ int main()
     // TODO(gerick): consider making this a hash table
     Map global_map = map_init(&global_keys_arena, &global_vals_arena);
     Map *maps = (Map*)arena_alloc(&file_name_arena, sizeof(Map)*files_len);
+    size_t *file_token_counts = (size_t*)arena_alloc(&file_name_arena, sizeof(size_t)*files_len);
 
     if(files == NULL){
         ERROR("No files available to be indexed, exiting...");
@@ -269,7 +339,7 @@ int main()
         };
         maps[i] = map_init(&local_keys_arena, &local_vals_arena);
         Assert(maps[i].len == 0, "Map must have changed and must not be tampered with.");
-        parse_file(&token_value_arena, roam_buffer, &(maps[i]), &global_map);
+        parse_file(&token_value_arena, roam_buffer, &(maps[i]), &global_map, &(file_token_counts[i]));
         unmap_buffer(&file_buf);
     }
 
@@ -313,8 +383,8 @@ int main()
             search_term_idx += 1;
         }
 
-        search_and_print(search_term, search_term_idx, 
-                         files, maps, files_len,
+        tfidf_search_and_print(search_term, search_term_idx, 
+                         files, maps, file_token_counts, files_len,
                          &global_map);
     }
 

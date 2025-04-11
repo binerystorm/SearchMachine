@@ -22,6 +22,8 @@ do{ \
     if(!(pred)){ \
         platform_assert(__FILE__, __func__, __LINE__, (#pred), reason __VA_OPT__(,) __VA_ARGS__); \
 }}while(0)
+
+// TODO(gerick): implement ability to set log level.
 #define ERROR(format, ...) do{ \
     platform_log(LOG_ERR, stderr, format __VA_OPT__(,) __VA_ARGS__); \
 }while(0)
