@@ -19,11 +19,14 @@ struct Str {
 #define MAP_LEN 800
 
 // NOTE(gerick): the keys and vals arrays should have the same capacity and length
+struct MapEntry {
+    Str key;
+    size_t val;
+};
+
 struct Map {
-    FixedArena *keys_arena;
-    FixedArena *vals_arena;
-    Str *keys;
-    size_t *vals;
+    FixedArena *entry_arena;
+    MapEntry *entries;
     size_t len;
 };
 
@@ -88,8 +91,8 @@ static inline void str_shift_left(Str *str)
 static size_t *map_get(Map *map, Str key)
 {
     for(size_t map_idx = 0; map_idx < map->len; map_idx++){
-        if(str_eq(map->keys[map_idx], key)){
-            return &(map->vals[map_idx]);
+        if(str_eq(map->entries[map_idx].key, key)){
+            return &(map->entries[map_idx].val);
         }
     }
     return NULL;
@@ -97,24 +100,18 @@ static size_t *map_get(Map *map, Str key)
 
 static void map_insert(Map *map, Str key, size_t val)
 {
-    Str *new_key = (Str*)fixed_arena_alloc(map->keys_arena, sizeof(Str));
-    size_t *new_val = (size_t*)fixed_arena_alloc(map->vals_arena, sizeof(size_t));
-
-    Assert((Str*)((size_t)map->keys + (map->len * sizeof(Str))) == new_key, "Assume length of map keys and vals are equal");
-    Assert((size_t*)((size_t)map->vals + (map->len * sizeof(size_t))) == new_val, "Assume length of map keys and vals are equal");
+    MapEntry *new_entry = (MapEntry*)fixed_arena_alloc(map->entry_arena, sizeof(MapEntry));
     map->len += 1;
 
-    *new_key = key;
-    *new_val = val;
+    new_entry->key = key;
+    new_entry->val = val;
 }
 
-Map map_init(FixedArena *const keys_arena, FixedArena *const vals_arena)
+Map map_init(FixedArena *const arena)
 {
     return (Map){
-        keys_arena,
-        vals_arena,
-        (Str*)fixed_arena_alloc(keys_arena, 0),
-        (size_t*)fixed_arena_alloc(vals_arena, 0),
+        arena,
+        (MapEntry*)fixed_arena_alloc(arena, 0),
         0
     };
 }
@@ -304,12 +301,15 @@ void search_and_print(Str *search_term, size_t search_term_len,
 }
 
 
-int main()
+int main(int argc, char **argv)
 {
-    FixedArena global_keys_arena = fixed_arena_init(sizeof(Str)*1024*1024);
-    FixedArena global_vals_arena = fixed_arena_init(sizeof(size_t)*1024*1024);
-    FixedArena local_keys_arena = fixed_arena_init(sizeof(Str)*1024*1024);
-    FixedArena local_vals_arena = fixed_arena_init(sizeof(size_t)*1024*1024);
+    if(argc > 1 && *(argv[1]) == 'a'){
+        // once again this is a test
+        return 1;
+    }
+
+    FixedArena global_map_arena = fixed_arena_init(sizeof(Str)*1024*1024);
+    FixedArena local_map_arena = fixed_arena_init(sizeof(Str)*1024*1024);
     FixedArena io_arena = fixed_arena_init(1024);
     Arena token_value_arena = arena_init();
     Arena file_name_arena = arena_init();
@@ -319,7 +319,7 @@ int main()
     char **files = get_files_in_dir(&file_name_arena, "./pygame-docs/ref/", &files_len);
     // float *ranks = (float*)arena_alloc(&file_name_arena, sizeof(float)*files_len);
     // TODO(gerick): consider making this a hash table
-    Map global_map = map_init(&global_keys_arena, &global_vals_arena);
+    Map global_map = map_init(&global_map_arena);
     Map *maps = (Map*)arena_alloc(&file_name_arena, sizeof(Map)*files_len);
     size_t *file_token_counts = (size_t*)arena_alloc(&file_name_arena, sizeof(size_t)*files_len);
 
@@ -337,7 +337,7 @@ int main()
             file_buf.data,
             file_buf.cap
         };
-        maps[i] = map_init(&local_keys_arena, &local_vals_arena);
+        maps[i] = map_init(&local_map_arena);
         Assert(maps[i].len == 0, "Map must have changed and must not be tampered with.");
         parse_file(&token_value_arena, roam_buffer, &(maps[i]), &global_map, &(file_token_counts[i]));
         unmap_buffer(&file_buf);
@@ -388,10 +388,8 @@ int main()
                          &global_map);
     }
 
-    fixed_arena_discard(&global_keys_arena);
-    fixed_arena_discard(&global_vals_arena);
-    fixed_arena_discard(&local_keys_arena);
-    fixed_arena_discard(&local_vals_arena);
+    fixed_arena_discard(&global_map_arena);
+    fixed_arena_discard(&local_map_arena);
     fixed_arena_discard(&io_arena);
     return 0;
 }
