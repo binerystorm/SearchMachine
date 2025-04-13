@@ -76,10 +76,24 @@ static inline bool is_space(char c)
            c == '\t';
 }
 
+static inline bool is_alpha(char c)
+{
+    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+}
+
+static inline bool is_numeric(char c)
+{
+    return (c >= '0' && c <= '9');
+}
+static inline bool is_alphanumeric(char c)
+{
+    return is_alpha(c) || is_numeric(c);
+}
+
 static inline bool is_punctuation(char c)
 {
     // TODO(gerick): make more robust punctuation filter
-    return (c >= 33 && c <= 47) || c == '?' || c == ';';
+    return (c >= 33 && c <= 47) || c == '?' || c == ';' || c == '|';
 }
 
 static inline void str_shift_left(Str *str)
@@ -88,11 +102,11 @@ static inline void str_shift_left(Str *str)
     str->len--;
 }
 
-static size_t *map_get(Map *map, Str key)
+static MapEntry *map_get(Map *map, Str key)
 {
     for(size_t map_idx = 0; map_idx < map->len; map_idx++){
         if(str_eq(map->entries[map_idx].key, key)){
-            return &(map->entries[map_idx].val);
+            return &(map->entries[map_idx]);
         }
     }
     return NULL;
@@ -116,88 +130,81 @@ Map map_init(FixedArena *const arena)
     };
 }
 
-// FIX Parsing creates empty tokens. Which are put in the maps. This problem occurs in `parse_file`
-void parse_file(Arena *arena, Str roam_buffer, Map *map, Map *global_map, size_t *token_count)
+
+Str lex_next_token(Arena *arena, Str *buffer)
+{
+    Assert(buffer->data != NULL, "lex_next_token expects a vallid buffer to operate on");
+    for(; (buffer->len > 0) && 
+        !is_alphanumeric(*(buffer->data));
+        str_shift_left(buffer))
+    {
+        // TODO(gerick): Make better html parser
+        // TODO(gerick): research whether this way of filtering out html tags will lose information
+        if(*(buffer->data) == '<'){
+            for(;(buffer->len > 0) &&
+                (*(buffer->data) != '>');
+                str_shift_left(buffer));
+        }
+    }
+
+    const char *const token_start = buffer->data;
+    for(; (buffer->len > 0) && is_alphanumeric(*buffer->data);
+        str_shift_left(buffer));
+
+    const size_t token_len = (size_t)buffer->data - (size_t)token_start;
+
+    if (token_len == 0){
+        Assert(buffer->len == 0, "The buffer should be empty if we are returning an empty token");
+        return (Str){NULL, 0};
+    }
+
+    // TODO(gerick): implement arena_resetable_alloc and use it hear
+    char* token_buf = (char*)arena_alloc(arena, token_len*sizeof(char));
+    for(size_t i = 0; i < token_len; i++){
+        char c = token_start[i];
+        if(c >= 'A' && c <= 'Z') {
+            c += 32;
+        }
+        token_buf[i] = c;
+    }
+    Str token = {
+        token_buf,
+        token_len
+    };
+    return token;
+}
+
+void parse_file(Arena *arena, Str *roam_buffer, Map *map, Map *global_map, size_t *token_count)
 {
     *token_count = 0;
-    // TODO(gerick): Make better html parser
-    while(roam_buffer.len > 0){
-        for(;
-        (roam_buffer.len > 0) &&
-        (is_space(*roam_buffer.data) ||
-        is_punctuation(*roam_buffer.data) ||
-        *roam_buffer.data == '<');
-        str_shift_left(&roam_buffer))
-        {
-            // TODO(gerick): research whether this way of filtering out html tags will lose information
-            if(*roam_buffer.data == '<'){
-                for(;(roam_buffer.len > 0) &&
-                    (*(roam_buffer.data) != '>');
-                    str_shift_left(&roam_buffer));
-            }
+    while(roam_buffer->len > 0){
+        Str token = lex_next_token(arena, roam_buffer);
+        if(token.data == NULL){ 
+            Assert(roam_buffer->len == 0, "if lex token returns NULL the buffer should be empty");
+            break;
         }
-
-        // pulling token out of stream
-        const char * const token_start_loc = roam_buffer.data;
-        for(;
-            (roam_buffer.len > 0) &&
-            (!is_space(*roam_buffer.data) && 
-            !is_punctuation(*roam_buffer.data) &&
-            *roam_buffer.data != '<');
-            str_shift_left(&roam_buffer));
-
-        // extracting simple form of tokan into external arena
-        // FIX(gerick): at the end of a file we register an empty token.
-        const size_t token_len = (size_t)roam_buffer.data - (size_t)token_start_loc;
-        if (token_len == 0) continue;
-        char* token_buf = (char*)arena_alloc(arena, token_len);
-        for(size_t i = 0; i < token_len; i++){
-            char c = token_start_loc[i];
-            if(c >= 'A' && c <= 'Z') {
-                c += 32;
-            }
-            token_buf[i] = c;
-        }
-        Str token = {
-            token_buf,
-            token_len
-        };
-
-        ////////
 
         (*token_count)++;
-        size_t *local_val = map_get(map, token);
-        if(local_val == NULL){
-            size_t *global_val;
-            map_insert(map, token, 1);
+        MapEntry *local_entry = map_get(map, token);
+        if(local_entry == NULL){
+            MapEntry *global_entry;
             
-            if ((global_val = map_get(global_map, token)) == NULL){
+            if ((global_entry = map_get(global_map, token)) == NULL){
                 map_insert(global_map, token, 1);
-            } else {
-                *global_val += 1;
-            }
-        }else{
-            *local_val += 1;
-        }
-        /*
-        size_t *global_val = map_get(global_map, token);
-        if(global_val == NULL){
-            map_insert(global_map, token, 1);
-            map_insert(map, token, 1);
-            continue;
-        } else {
-            *global_val += 1;
-            size_t *local_val = map_get(map, token);
-            if(local_val == NULL){
                 map_insert(map, token, 1);
             } else {
-                *local_val += 1;
+                global_entry->val += 1;
+                map_insert(map, global_entry->key, 1);
+                // TODO(gerick): Create proper scratch buffer system
+                Assert((arena->top - sizeof(void**)) >= token.len, "Make sure the scratch doesnt corrupt ptr to prev block");
+                arena->top -= token.len;
             }
+        }else{
+            local_entry->val += 1;
             // TODO(gerick): Create proper scratch buffer system
             Assert((arena->top - sizeof(void**)) >= token.len, "Make sure the scratch doesnt corrupt ptr to prev block");
             arena->top -= token.len;
         }
-        */
     }
 }
 
@@ -219,15 +226,15 @@ void tfidf_search_and_print(Str *search_term, size_t search_term_len,
             Map current_map = maps[file_idx];
             float term_freq = 0;
             float inverse_doc_freq = 0;
-            size_t *map_val = NULL;
+            MapEntry *map_entry = NULL;
 
-            if((map_val = map_get(&current_map, term)) != NULL){
+            if((map_entry = map_get(&current_map, term)) != NULL){
                 Assert(token_counts[file_idx] > 0, "this function assumes the file has lenth");
-                term_freq = (float) *map_val / (float)token_counts[file_idx];
+                term_freq = (float) map_entry->val / (float)token_counts[file_idx];
             }
-            if((map_val = map_get(global_map, term)) != NULL){
-                Assert(*map_val > 0, "term occurence in the corpus should not be negative");
-                inverse_doc_freq = logf((float)files_len / (float)*map_val);
+            if((map_entry = map_get(global_map, term)) != NULL){
+                Assert(map_entry->val > 0, "term occurence in the corpus should not be negative");
+                inverse_doc_freq = logf((float)files_len / (float)map_entry->val);
             }
             rank += term_freq*inverse_doc_freq;
         }
@@ -271,13 +278,13 @@ void search_and_print(Str *search_term, size_t search_term_len,
             Map current_map = maps[file_idx];
             float term_freq = 0;
             float inverse_term_freq = 0;
-            size_t *map_val = NULL;
+            MapEntry *map_entry = NULL;
 
-            if((map_val = map_get(&current_map, term)) != NULL){
-                term_freq = (float) *map_val;
+            if((map_entry = map_get(&current_map, term)) != NULL){
+                term_freq = (float) map_entry->val;
             }
-            if((map_val = map_get(global_map, term)) != NULL){
-                inverse_term_freq = 1/((float) *map_val - term_freq);
+            if((map_entry = map_get(global_map, term)) != NULL){
+                inverse_term_freq = 1/((float) map_entry->val - term_freq);
             }
             rank += term_freq*inverse_term_freq;
         }
@@ -339,7 +346,7 @@ int main(int argc, char **argv)
         };
         maps[i] = map_init(&local_map_arena);
         Assert(maps[i].len == 0, "Map must have changed and must not be tampered with.");
-        parse_file(&token_value_arena, roam_buffer, &(maps[i]), &global_map, &(file_token_counts[i]));
+        parse_file(&token_value_arena, &roam_buffer, &(maps[i]), &global_map, &(file_token_counts[i]));
         unmap_buffer(&file_buf);
     }
 
