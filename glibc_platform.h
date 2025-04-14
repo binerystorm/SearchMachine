@@ -42,6 +42,7 @@ struct Arena {
     // arena's meta data
     size_t cap;
     size_t top;
+    void *temp_region;
 
     // arena's current block
     void *data;
@@ -62,6 +63,12 @@ void unmap_buffer(ReadBuffer *buf);
 
 Arena arena_init();
 void *arena_alloc(Arena *arena, size_t nbytes);
+void *arena_alloc_temp(Arena *arena, size_t nbytes);
+// TODO(gerick): This function is not needed, but it could be usefull.
+// Implement it in the future, if it is neccesery.
+// void arena_grow_temp(Arena *arena, size_t extra_nbytes);
+void arena_discard_temp(Arena *arena);
+void arena_commit_temp(Arena *arena);
 
 FixedArena fixed_arena_init(size_t nbytes);
 void *fixed_arena_alloc(FixedArena *arena, size_t nbytes);
