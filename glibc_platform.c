@@ -169,7 +169,7 @@ Arena arena_init()
     return (Arena) {
         (size_t)getpagesize(),
         sizeof(void**),
-        NULL,
+        0,
         data
     };
 }
@@ -204,52 +204,68 @@ void *__arena_genral_alloc(Arena *arena, size_t nbytes)
 // TODO(gerick): Handle all errors that can occure during mem_mapping
 // and mem_unmapping
 
+// TODO(gerick): Make all arena functions that can fail, log the location they where called from
 void *arena_alloc(Arena *arena, size_t nbytes)
 {
-    if(arena->temp_region != NULL){
+    if(arena->start_temp_region != 0){
         ERROR("An arena cannot be used for regulare allocating, if a temporary region is active.");
-        // TODO(gerick): If we add temporary region growing, Edit this note to recommend it as an option.
-        INFO("To fix this problem you can: Discard or commit the temporary region, and then procede to allocate normally.");
         _crash_after_flush();
     }
-
     return __arena_genral_alloc(arena, nbytes);
 }
-void *arena_alloc_temp(Arena *arena, size_t nbytes)
-{
-    if(arena->temp_region != NULL){
-        ERROR("An arena cannot allocate new temporary region, if a temporary region is already active.");
-        // TODO(gerick): If we add temporary region growing, Edit this note to recommend it as an option.
-        INFO("To fix this problem you can: Discard or commit the previous temporary region, and then allocate new one");
+
+void arena_start_temp_region(Arena *arena){
+    if(arena->start_temp_region != 0){
+        ERROR("A temporary region is being initiated, when one is already active.");
         _crash_after_flush();
     }
-    arena->temp_region = __arena_genral_alloc(arena, nbytes);
-    return arena->temp_region;
+    arena->start_temp_region = arena->top;
 }
+
+bool arena_temp_mode(Arena *arena)
+{
+    return arena->start_temp_region != 0;
+}
+
+void *arena_alloc_temp(Arena *arena, size_t nbytes)
+{
+    if(arena->start_temp_region == 0){
+        ERROR("Arena cannot allocate temporary memory if a temporary region has not been started on the arena");
+        _crash_after_flush();
+    }
+    Assert(arena->top + 8 + nbytes < arena->cap, "TODO: implement temorary regions over memory pages");
+    return __arena_genral_alloc(arena, nbytes);
+}
+
 // TODO(gerick): If a temporary region allocation overflows a memory page --
 // causing the allacation to take place on a new page -- when discarding the
 // region, do we want to restore the dead bytes in the old page and
 // unmap the new page?
 void arena_discard_temp(Arena *arena)
 {
-    if(arena->temp_region == NULL){
+    if(arena->start_temp_region == 0){
         ERROR("There is currently no temporary region to discard.");
         _crash_after_flush();
     }
-    size_t temp_region_size = ((size_t)arena->data + arena->top) - (size_t)arena->temp_region;
-    Assert((arena->top - sizeof(void**)) >= temp_region_size,
-           "Discarding the temporary region is smashing the ptr point to the previous memory page. Somthing has gone horribly wrong");
-    arena->top -= temp_region_size;
-    arena->temp_region = NULL;
+    Assert(arena->start_temp_region >= 8, "The discarding of a temporary region is smashing the reserved space for the pointer which points to the previos memory page. Something catastrophic has happend.");
+    arena->top = arena->start_temp_region;
+    arena->start_temp_region = 0;
 }
 
 void arena_commit_temp(Arena *arena)
 {
-    if(arena->temp_region == NULL){
+    if(arena->start_temp_region == 0){
         ERROR("There is currently no temporary region to commit.");
         _crash_after_flush();
     }
-    arena->temp_region = NULL;
+    arena->start_temp_region = 0;
+}
+
+void arena_reset(Arena *arena)
+{
+    Assert(*((void**)arena->data) == NULL, "TODO: implement arena resets for arena's with multiple memory pages");
+    arena->start_temp_region = 0;
+    arena->top = 8;
 }
 
 // TODO(gerick): Add arena free function, to unmap whole arena

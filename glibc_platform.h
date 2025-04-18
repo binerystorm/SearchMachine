@@ -37,12 +37,16 @@ struct ReadBuffer {
 // current block store the start location of the previos
 // block or NULL for no previous block. Previous blocks
 // are always assumed to be full.
+// NOTE(gerick): The `start_temp_region` field can never
+// be zero as first 8 bytes of the arena always store the
+// address to the previous block, or `NULL` in the case of
+// there not being a preivios block.
 struct Arena {
 
     // arena's meta data
     size_t cap;
     size_t top;
-    void *temp_region;
+    size_t start_temp_region;
 
     // arena's current block
     void *data;
@@ -63,12 +67,12 @@ void unmap_buffer(ReadBuffer *buf);
 
 Arena arena_init();
 void *arena_alloc(Arena *arena, size_t nbytes);
+void arena_start_temp_region(Arena *arena);
+bool arena_temp_mode(Arena *arena);
 void *arena_alloc_temp(Arena *arena, size_t nbytes);
-// TODO(gerick): This function is not needed, but it could be usefull.
-// Implement it in the future, if it is neccesery.
-// void arena_grow_temp(Arena *arena, size_t extra_nbytes);
 void arena_discard_temp(Arena *arena);
 void arena_commit_temp(Arena *arena);
+void arena_reset(Arena *arena);
 
 FixedArena fixed_arena_init(size_t nbytes);
 void *fixed_arena_alloc(FixedArena *arena, size_t nbytes);
