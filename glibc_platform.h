@@ -44,9 +44,10 @@ struct ReadBuffer {
 struct Arena {
 
     // arena's meta data
-    size_t cap;
+    const size_t cap;
     size_t top;
     size_t start_temp_region;
+    void* page_of_start_temp_region;
 
     // arena's current block
     void *data;
@@ -73,6 +74,7 @@ void *arena_alloc_temp(Arena *arena, size_t nbytes);
 void arena_discard_temp(Arena *arena);
 void arena_commit_temp(Arena *arena);
 void arena_reset(Arena *arena);
+void arena_unmap(Arena *arena);
 
 FixedArena fixed_arena_init(size_t nbytes);
 void *fixed_arena_alloc(FixedArena *arena, size_t nbytes);
