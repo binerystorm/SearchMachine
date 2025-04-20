@@ -131,6 +131,9 @@ Map map_init(FixedArena *const arena)
 }
 
 
+// TODO(gerick): Abstract lexing into a lexing of search terms
+// and a lexing of file. This is neccesary as html will not need
+// to be filtered out of a search term (in principle)
 Str lex_next_token(Arena *arena, Str *buffer)
 {
     Assert(buffer->data != NULL, "lex_next_token expects a vallid buffer to operate on");
@@ -158,8 +161,7 @@ Str lex_next_token(Arena *arena, Str *buffer)
         return (Str){NULL, 0};
     }
 
-    // TODO(gerick): implement arena_resetable_alloc and use it hear
-    char* token_buf = (char*)arena_alloc(arena, token_len*sizeof(char));
+    char* token_buf = (char*)arena_alloc_temp(arena, token_len*sizeof(char));
     for(size_t i = 0; i < token_len; i++){
         char c = token_start[i];
         if(c >= 'A' && c <= 'Z') {
@@ -177,10 +179,13 @@ Str lex_next_token(Arena *arena, Str *buffer)
 void parse_file(Arena *arena, Str *roam_buffer, Map *map, Map *global_map, size_t *token_count)
 {
     *token_count = 0;
+
     while(roam_buffer->len > 0){
+        arena_start_temp_region(arena);
         Str token = lex_next_token(arena, roam_buffer);
         if(token.data == NULL){ 
             Assert(roam_buffer->len == 0, "if lex token returns NULL the buffer should be empty");
+            arena_discard_temp(arena);
             break;
         }
 
@@ -190,20 +195,18 @@ void parse_file(Arena *arena, Str *roam_buffer, Map *map, Map *global_map, size_
             MapEntry *global_entry;
             
             if ((global_entry = map_get(global_map, token)) == NULL){
+                arena_commit_temp(arena);
                 map_insert(global_map, token, 1);
                 map_insert(map, token, 1);
+
             } else {
                 global_entry->val += 1;
                 map_insert(map, global_entry->key, 1);
-                // TODO(gerick): Create proper scratch buffer system
-                Assert((arena->top - sizeof(void**)) >= token.len, "Make sure the scratch doesnt corrupt ptr to prev block");
-                arena->top -= token.len;
+                arena_discard_temp(arena);
             }
         }else{
+            arena_discard_temp(arena);
             local_entry->val += 1;
-            // TODO(gerick): Create proper scratch buffer system
-            Assert((arena->top - sizeof(void**)) >= token.len, "Make sure the scratch doesnt corrupt ptr to prev block");
-            arena->top -= token.len;
         }
     }
 }
@@ -351,52 +354,50 @@ int main(int argc, char **argv)
     }
 
     const size_t input_buffer_cap = 100;
-    size_t input_buffer_len = 0;
-    char *input_buffer = (char*)fixed_arena_alloc(&io_arena, input_buffer_cap);
+    char *const input_buffer_start = (char*)fixed_arena_alloc(&io_arena, input_buffer_cap);
+    Str input_buffer = {};
+    input_buffer.len = 0;
+    input_buffer.data = input_buffer_start;
     // TODO(gerick): make more explicit way of saying that the rest of the arena is for 
     // a some array in the arena system
     Str *search_term = (Str*)fixed_arena_alloc(&io_arena, 0);
 
     while(true){
-        size_t search_term_idx;
+        input_buffer.data = input_buffer_start;
+        input_buffer.len = 0; 
+
         // TODO(gerick): replace with platform level function
         printf("> ");
         fflush(stdout);
-        get_stdin(input_buffer, input_buffer_cap, &input_buffer_len);
-        if(input_buffer_len == input_buffer_cap &&
-            input_buffer[input_buffer_len - 1] != '\n'){
+        get_stdin((char*)input_buffer.data, input_buffer_cap, &(input_buffer.len));
+        if(input_buffer.len == input_buffer_cap &&
+            input_buffer.data[input_buffer.len - 1] != '\n'){
             WARN("Truncating inputed search string."
                    " Input may be a maximum of %zu (including enter)",
                    input_buffer_cap);
         }
 
-        search_term_idx = 0;
-        for(size_t input_buffer_idx = 0;
-            input_buffer_idx < input_buffer_len;
-            input_buffer_idx++)
-        {
-            Str *current_term = &(search_term[search_term_idx]);
-            for(;is_space(input_buffer[input_buffer_idx]) &&
-                    input_buffer_idx < input_buffer_len;
-                input_buffer_idx++);
-            current_term->data = &(input_buffer[input_buffer_idx]);
-            for(;!is_space(input_buffer[input_buffer_idx]) &&
-                    input_buffer_idx < input_buffer_len;
-                input_buffer_idx++);
-            current_term->len = 
-                (size_t)&(input_buffer[input_buffer_idx]) - (size_t)current_term->data;
-            if (current_term->len == 0) break;
-
-            search_term_idx += 1;
+        size_t search_term_len = 0;
+        arena_start_temp_region(&token_value_arena);
+        for(;;search_term_len++){
+            
+            search_term[search_term_len] = lex_next_token(&token_value_arena, &input_buffer);
+            if(search_term[search_term_len].data == NULL){
+                break;
+            } 
         }
 
-        tfidf_search_and_print(search_term, search_term_idx, 
+        tfidf_search_and_print(search_term, search_term_len, 
                          files, maps, file_token_counts, files_len,
                          &global_map);
+
+        arena_discard_temp(&token_value_arena);
     }
 
     fixed_arena_discard(&global_map_arena);
     fixed_arena_discard(&local_map_arena);
     fixed_arena_discard(&io_arena);
+    arena_unmap(&token_value_arena);
+    arena_unmap(&file_name_arena);
     return 0;
 }

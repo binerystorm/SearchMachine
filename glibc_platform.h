@@ -66,6 +66,12 @@ void get_stdin(char *buffer, size_t buffer_len);
 ReadBuffer slurp_file_or_panic(const char *path);
 void unmap_buffer(ReadBuffer *buf);
 
+// TODO(gerick): Extract all arena code into its own library,
+// It is cluttering thing op here 
+// TODO(gerick): Simplify Arena api by implementing constant
+// temporary region mode. Like this arena allcate will allways
+// allcate on a temp region, and if you want to keep the temp
+// region just commit it
 Arena arena_init();
 void *arena_alloc(Arena *arena, size_t nbytes);
 void arena_start_temp_region(Arena *arena);

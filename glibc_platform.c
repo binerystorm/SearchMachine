@@ -248,7 +248,6 @@ void *arena_alloc_temp(Arena *arena, size_t nbytes)
         ERROR("Arena cannot allocate temporary memory if a temporary region has not been started on the arena");
         _crash_after_flush();
     }
-    // Assert(arena->top + 8 + nbytes < arena->cap, "TODO: implement temorary regions over memory pages");
     return __arena_genral_alloc(arena, nbytes);
 }
 
@@ -296,7 +295,6 @@ void arena_unmap(Arena *arena)
     arena->start_temp_region = 0;
     arena->page_of_start_temp_region = NULL;
 }
-// TODO(gerick): Add arena free function, to unmap whole arena
 
 FixedArena fixed_arena_init(size_t nbytes)
 {
