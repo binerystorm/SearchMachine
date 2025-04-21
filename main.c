@@ -6,11 +6,14 @@
 // TODO(gerick): create my own assertion function
 //#include <assert.h>
 
+// TODO(gerick): maybe make libstemmer work with my allocators
+#include "libstemmer.h"
 #include "glibc_log.c"
 #include "glibc_platform.h"
 
 #define ArrayLen(ARR) sizeof((ARR))/sizeof((ARR)[0])
 
+typedef struct sb_stemmer Stemmer;
 struct Str {
     const char *data;
     size_t len;
@@ -134,7 +137,7 @@ Map map_init(FixedArena *const arena)
 // TODO(gerick): Abstract lexing into a lexing of search terms
 // and a lexing of file. This is neccesary as html will not need
 // to be filtered out of a search term (in principle)
-Str lex_next_token(Arena *arena, Str *buffer)
+Str lex_next_token(Arena *arena, Stemmer *stemmer, Str *buffer)
 {
     Assert(buffer->data != NULL, "lex_next_token expects a vallid buffer to operate on");
     for(; (buffer->len > 0) && 
@@ -154,7 +157,7 @@ Str lex_next_token(Arena *arena, Str *buffer)
     for(; (buffer->len > 0) && is_alphanumeric(*buffer->data);
         str_shift_left(buffer));
 
-    const size_t token_len = (size_t)buffer->data - (size_t)token_start;
+    size_t token_len = (size_t)buffer->data - (size_t)token_start;
 
     if (token_len == 0){
         Assert(buffer->len == 0, "The buffer should be empty if we are returning an empty token");
@@ -169,6 +172,16 @@ Str lex_next_token(Arena *arena, Str *buffer)
         }
         token_buf[i] = c;
     }
+
+    const sb_symbol *stemmed_token = sb_stemmer_stem(stemmer, (const sb_symbol*)token_buf, token_len);
+    Assert(stemmed_token != NULL, "Stemmer ran out of memory");
+    token_len = sb_stemmer_length(stemmer);
+    arena_discard_temp(arena);
+    arena_start_temp_region(arena);
+    token_buf = (char*)arena_alloc_temp(arena, token_len);
+
+    for(size_t i = 0; i < token_len; i++) token_buf[i] = stemmed_token[i];
+    
     Str token = {
         token_buf,
         token_len
@@ -176,13 +189,13 @@ Str lex_next_token(Arena *arena, Str *buffer)
     return token;
 }
 
-void parse_file(Arena *arena, Str *roam_buffer, Map *map, Map *global_map, size_t *token_count)
+void parse_file(Arena *arena, Stemmer *stemmer, Str *roam_buffer, Map *map, Map *global_map, size_t *token_count)
 {
     *token_count = 0;
 
     while(roam_buffer->len > 0){
         arena_start_temp_region(arena);
-        Str token = lex_next_token(arena, roam_buffer);
+        Str token = lex_next_token(arena, stemmer, roam_buffer);
         if(token.data == NULL){ 
             Assert(roam_buffer->len == 0, "if lex token returns NULL the buffer should be empty");
             arena_discard_temp(arena);
@@ -313,7 +326,12 @@ void search_and_print(Str *search_term, size_t search_term_len,
 
 int main(int argc, char **argv)
 {
-    if(argc > 1 && *(argv[1]) == 'a'){
+    if(argc > 1){
+        struct sb_stemmer *stemmer = sb_stemmer_new("english", NULL); 
+        const unsigned char *stemmed = sb_stemmer_stem(stemmer, (const sb_symbol*)argv[1], strlen(argv[1]));
+        printf("%s\n", stemmed);
+        printf("%.*s\n", sb_stemmer_length(stemmer), stemmed);
+        sb_stemmer_delete(stemmer);
         // once again this is a test
         return 1;
     }
@@ -323,6 +341,7 @@ int main(int argc, char **argv)
     FixedArena io_arena = fixed_arena_init(1024);
     Arena token_value_arena = arena_init();
     Arena file_name_arena = arena_init();
+    Stemmer *stemmer = sb_stemmer_new("english", NULL); 
 
     size_t files_len = 0;
     INFO("Finding files...");
@@ -349,7 +368,7 @@ int main(int argc, char **argv)
         };
         maps[i] = map_init(&local_map_arena);
         Assert(maps[i].len == 0, "Map must have changed and must not be tampered with.");
-        parse_file(&token_value_arena, &roam_buffer, &(maps[i]), &global_map, &(file_token_counts[i]));
+        parse_file(&token_value_arena, stemmer, &roam_buffer, &(maps[i]), &global_map, &(file_token_counts[i]));
         unmap_buffer(&file_buf);
     }
 
@@ -381,7 +400,7 @@ int main(int argc, char **argv)
         arena_start_temp_region(&token_value_arena);
         for(;;search_term_len++){
             
-            search_term[search_term_len] = lex_next_token(&token_value_arena, &input_buffer);
+            search_term[search_term_len] = lex_next_token(&token_value_arena, stemmer, &input_buffer);
             if(search_term[search_term_len].data == NULL){
                 break;
             } 
@@ -399,5 +418,6 @@ int main(int argc, char **argv)
     fixed_arena_discard(&io_arena);
     arena_unmap(&token_value_arena);
     arena_unmap(&file_name_arena);
+    sb_stemmer_delete(stemmer);
     return 0;
 }
