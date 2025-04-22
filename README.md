@@ -4,10 +4,9 @@ This is my attempt at making a search machine C(++), with no dependencies. The p
 # Usage 
 The project can be built with the following command:
 ```
-$ mkdir build
-$ ./build.sh
+$ make
 ```
 And it can be run with:
 ```
-$ build/build
+$ make run
 ```
