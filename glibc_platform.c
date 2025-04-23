@@ -5,6 +5,7 @@ void die(int exit_code)
 {
     exit(exit_code);
 }
+
 ReadBuffer slurp_file_or_panic(const char *path)
 {
     struct stat st;
@@ -158,140 +159,6 @@ char **get_files_in_dir2(Arena *arena, const char *path, size_t *file_count)
 void get_stdin(char *buffer, size_t buffer_len, size_t *bytes_read)
 {
     *bytes_read = read(0, buffer, buffer_len);
-}
-
-Arena arena_init()
-{
-    void* data = (void*)mmap(NULL, getpagesize(), PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
-    *(void**)data = (uint64)NULL;
-    return (Arena) {
-        (size_t)getpagesize(),
-        sizeof(void**),
-        0,
-        NULL,
-        data
-    };
-}
-static void *__arena_genral_alloc(Arena *arena, size_t nbytes)
-{
-    Assert(nbytes < (size_t)getpagesize(), "An arena cannot store a contiguis block of memory larger than the value returned by getpagesize()");
-    // TODO(gerick): when nbytes overflows arena remaining space we alocate new block
-    // to ensure struct are stored in contiguous memory however when allocating massive
-    // amounts of memory, block becomes fragmented
-    // TODO(gerick): Make better alignment system instead always alighning on 8 bytes
-    // STUDY(gerick): How does memory alignment word and what are the negative effects of bad
-    // alignment (at least on my machine)
-    uint8 used_bytes = arena->top % 8;
-    uint8 dead_bytes = (8 - used_bytes) * (used_bytes != 0);
-
-    if(arena->top + dead_bytes + nbytes >= arena->cap){
-        void *prev_block = arena->data;
-        // arena->cap = getpagesize();
-        arena->top = sizeof(void**);
-        arena->data = 
-            (void*)mmap(NULL, getpagesize(), PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
-        *(void**)arena->data = prev_block;
-    } else {
-        arena->top += dead_bytes;
-    }
-    void *ret = (void*) ((uint64)arena->data + (uint64)arena->top);
-    arena->top += nbytes;
-    Assert((uint64)ret % (uint64)8 == 0, "Make sure our allocation is 8 byte alighned");
-    Assert(arena->top < arena->cap, "Make sure the arena size does not supercede its maximum size");
-    return ret;
-}
-
-static void __arena_unmap_until(Arena *arena, void *until)
-{
-    Assert(arena->data != NULL, "Arena cannot be freed if it has no allocated data");
-    Assert(arena->data != until, "No pages will be freed, I don't trust this");
-    while(arena->data != until && arena->data != NULL){
-        void *prev_page = *(void**)arena->data;
-        munmap(arena->data, arena->cap);
-        arena->data = prev_page;
-        arena->top = arena->cap;
-    }
-    Assert(!(arena->data == NULL && until != NULL), "Until pointer provided was not a valid page in the arena.");
-}
-// TODO(gerick): Handle all errors that can occure during mem_mapping
-// and mem_unmapping
-
-// TODO(gerick): Make all arena functions that can fail, log the location they where called from
-void *arena_alloc(Arena *arena, size_t nbytes)
-{
-    if(arena->start_temp_region != 0){
-        ERROR("An arena cannot be used for regulare allocating, if a temporary region is active.");
-        die(1);
-    }
-    return __arena_genral_alloc(arena, nbytes);
-}
-
-void arena_start_temp_region(Arena *arena){
-    if(arena->start_temp_region != 0){
-        ERROR("A temporary region is being initiated, when one is already active.");
-        die(1);
-    }
-    arena->start_temp_region = arena->top;
-    arena->page_of_start_temp_region = arena->data;
-}
-
-bool arena_temp_mode(Arena *arena)
-{
-    return arena->start_temp_region != 0;
-}
-
-void *arena_alloc_temp(Arena *arena, size_t nbytes)
-{
-    if(arena->start_temp_region == 0){
-        ERROR("Arena cannot allocate temporary memory if a temporary region has not been started on the arena");
-        die(1);
-    }
-    return __arena_genral_alloc(arena, nbytes);
-}
-
-// TODO(gerick): If a temporary region allocation overflows a memory page --
-// causing the allacation to take place on a new page -- when discarding the
-// region, do we want to restore the dead bytes in the old page and
-// unmap the new page?
-void arena_discard_temp(Arena *arena)
-{
-    if(arena->start_temp_region == 0){
-        ERROR("There is currently no temporary region to discard.");
-        die(1);
-    }
-    Assert(arena->start_temp_region >= 8, "The discarding of a temporary region is smashing the reserved space for the pointer which points to the previos memory page. Something catastrophic has happend.");
-    if(arena->page_of_start_temp_region != arena->data){
-        __arena_unmap_until(arena, arena->page_of_start_temp_region);
-    }
-    arena->top = arena->start_temp_region;
-    arena->start_temp_region = 0;
-    arena->page_of_start_temp_region = NULL;
-}
-
-void arena_commit_temp(Arena *arena)
-{
-    if(arena->start_temp_region == 0){
-        ERROR("There is currently no temporary region to commit.");
-        die(1);
-    }
-    arena->start_temp_region = 0;
-    arena->page_of_start_temp_region = NULL;
-}
-
-void arena_reset(Arena *arena)
-{
-    Assert(*((void**)arena->data) == NULL, "TODO: implement arena resets for arena's with multiple memory pages");
-    arena->start_temp_region = 0;
-    arena->top = 8;
-}
-
-void arena_unmap(Arena *arena)
-{
-    Assert(arena->data != NULL, "cant free an arena that has not been initialized");
-    __arena_unmap_until(arena, NULL);
-    arena->top = 0;
-    arena->start_temp_region = 0;
-    arena->page_of_start_temp_region = NULL;
 }
 
 FixedArena fixed_arena_init(size_t nbytes)

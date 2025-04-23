@@ -28,6 +28,8 @@ struct Map {
     size_t len;
 };
 
+#define ARENA_IMPLEMENTATION
+#include "arena.h"
 #include "glibc_log.c"
 #include "glibc_platform.c"
 

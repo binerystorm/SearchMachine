@@ -22,4 +22,12 @@ do{ \
     platform_log(LOG_INFO, stdout, format __VA_OPT__(,) __VA_ARGS__); \
 }while(0)
 
+void platform_assert(
+    const char *file_name, const char *fun_name,
+    int line,
+    const char *failure, const char* reason...);
+
+void platform_log(Log_Level level, FILE *file, 
+                 const char *format, ...);
+
 #endif // _GLIBC_LOG_H_

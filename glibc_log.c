@@ -23,7 +23,7 @@ void platform_assert(
     exit(1);
 }
 
-const char* level_to_str(Log_Level level)
+static const char* level_to_str(Log_Level level)
 {
     switch(level){
         case LOG_INFO: return "[\x1b[36mINFO\x1b[0m]";
