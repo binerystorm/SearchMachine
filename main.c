@@ -162,7 +162,7 @@ Str lex_next_token(Arena *arena, Stemmer *stemmer, Str *buffer)
         return (Str){NULL, 0};
     }
 
-    char* token_buf = (char*)arena_alloc_temp(arena, token_len*sizeof(char));
+    char* token_buf = (char*)arena_alloc(arena, token_len*sizeof(char));
     for(size_t i = 0; i < token_len; i++){
         char c = token_start[i];
         if(c >= 'A' && c <= 'Z') {
@@ -175,8 +175,7 @@ Str lex_next_token(Arena *arena, Stemmer *stemmer, Str *buffer)
     Assert(stemmed_token != NULL, "Stemmer ran out of memory");
     token_len = sb_stemmer_length(stemmer);
     arena_discard_temp(arena);
-    arena_start_temp_region(arena);
-    token_buf = (char*)arena_alloc_temp(arena, token_len);
+    token_buf = (char*)arena_alloc(arena, token_len);
 
     for(size_t i = 0; i < token_len; i++) token_buf[i] = stemmed_token[i];
     
@@ -192,7 +191,6 @@ void parse_file(Arena *arena, Stemmer *stemmer, Str *roam_buffer, Map *map, Map 
     *token_count = 0;
 
     while(roam_buffer->len > 0){
-        arena_start_temp_region(arena);
         Str token = lex_next_token(arena, stemmer, roam_buffer);
         if(token.data == NULL){ 
             Assert(roam_buffer->len == 0, "if lex token returns NULL the buffer should be empty");
@@ -393,7 +391,6 @@ int main(int argc, char **argv)
         }
 
         size_t search_term_len = 0;
-        arena_start_temp_region(&token_value_arena);
         for(;;search_term_len++){
             
             search_term[search_term_len] = lex_next_token(&token_value_arena, stemmer, &input_buffer);
