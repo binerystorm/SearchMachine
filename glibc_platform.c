@@ -1,11 +1,9 @@
 #include "glibc_platform.h"
 #include "defer.h"
 
-void _crash_after_flush()
+void die(int exit_code)
 {
-    fflush(stdout);
-    fflush(stderr);
-    Assert(false, "TODO make better exit");
+    exit(exit_code);
 }
 ReadBuffer slurp_file_or_panic(const char *path)
 {
@@ -35,7 +33,7 @@ ReadBuffer slurp_file_or_panic(const char *path)
 
     if((data = (char*)mmap(NULL, st.st_size, PROT_READ, MAP_PRIVATE, fd, 0)) == MAP_FAILED){
         ERROR("Could not allocate memory: %s", strerror(errno));
-        Assert(false, "TODO: make better exit system");
+        die(1);
     }
 
     ReadBuffer ret = {
@@ -223,7 +221,7 @@ void *arena_alloc(Arena *arena, size_t nbytes)
 {
     if(arena->start_temp_region != 0){
         ERROR("An arena cannot be used for regulare allocating, if a temporary region is active.");
-        _crash_after_flush();
+        die(1);
     }
     return __arena_genral_alloc(arena, nbytes);
 }
@@ -231,7 +229,7 @@ void *arena_alloc(Arena *arena, size_t nbytes)
 void arena_start_temp_region(Arena *arena){
     if(arena->start_temp_region != 0){
         ERROR("A temporary region is being initiated, when one is already active.");
-        _crash_after_flush();
+        die(1);
     }
     arena->start_temp_region = arena->top;
     arena->page_of_start_temp_region = arena->data;
@@ -246,7 +244,7 @@ void *arena_alloc_temp(Arena *arena, size_t nbytes)
 {
     if(arena->start_temp_region == 0){
         ERROR("Arena cannot allocate temporary memory if a temporary region has not been started on the arena");
-        _crash_after_flush();
+        die(1);
     }
     return __arena_genral_alloc(arena, nbytes);
 }
@@ -259,7 +257,7 @@ void arena_discard_temp(Arena *arena)
 {
     if(arena->start_temp_region == 0){
         ERROR("There is currently no temporary region to discard.");
-        _crash_after_flush();
+        die(1);
     }
     Assert(arena->start_temp_region >= 8, "The discarding of a temporary region is smashing the reserved space for the pointer which points to the previos memory page. Something catastrophic has happend.");
     if(arena->page_of_start_temp_region != arena->data){
@@ -274,7 +272,7 @@ void arena_commit_temp(Arena *arena)
 {
     if(arena->start_temp_region == 0){
         ERROR("There is currently no temporary region to commit.");
-        _crash_after_flush();
+        die(1);
     }
     arena->start_temp_region = 0;
     arena->page_of_start_temp_region = NULL;

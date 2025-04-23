@@ -1,15 +1,11 @@
 #include <stdio.h>
-#include <errno.h>
-#include <stdlib.h>
 // TODO(gerick): write my own log aproximation funtion
 #include <math.h>
-// TODO(gerick): create my own assertion function
-//#include <assert.h>
 
 // TODO(gerick): maybe make libstemmer work with my allocators
 #include "libstemmer.h"
-#include "glibc_log.c"
 #include "glibc_platform.h"
+#include "glibc_log.h"
 
 #define ArrayLen(ARR) sizeof((ARR))/sizeof((ARR)[0])
 
@@ -21,7 +17,6 @@ struct Str {
 
 #define MAP_LEN 800
 
-// NOTE(gerick): the keys and vals arrays should have the same capacity and length
 struct MapEntry {
     Str key;
     size_t val;
@@ -33,6 +28,7 @@ struct Map {
     size_t len;
 };
 
+#include "glibc_log.c"
 #include "glibc_platform.c"
 
 #define STR(cstr) (Str){(cstr), cstr_len((cstr))}
@@ -354,13 +350,11 @@ int main(int argc, char **argv)
 
     if(files == NULL){
         ERROR("No files available to be indexed, exiting...");
-        fflush(stdout);
-        Assert(0, "TODO: Make clean exit");
+        die(1);
     }
 
     // indexing files
     for(size_t i = 0; i < files_len; i++){
-        // TODO(gerick): consider different way of asset management
         ReadBuffer file_buf = slurp_file_or_panic(files[i]);
         Str roam_buffer = {
             file_buf.data,

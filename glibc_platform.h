@@ -5,6 +5,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <dirent.h>
+#include <errno.h>
 // TODO(gerick): make my own utilties for this
 #include <string.h>
 
@@ -19,18 +20,6 @@ struct ReadBuffer {
     const size_t cap;
     bool unmapped;
 };
-
-/*
-// #define defer_set_return(TYPE) TYPE __defer_return_value
-// #define defer(STATMENT) do{goto after;\
-// defer: \
-// STATMENT \
-// return __defer_return_value; \
-// after:\
-// }while(0)
-
-// #define defer_return(VALUE) do{__defer_return_value = (VALUE); goto defer;}while(0)
-*/
 
 //NOTE(gerick): arena meta data always stores the meta
 // data for the current block. the first 8 bytes of the 
@@ -59,12 +48,14 @@ struct FixedArena {
     void *data;
 };
 
+void die(int exit_code);
 char **get_files_in_dir(Arena *arena, const char *path, size_t *file_count);
 
 void get_stdin(char *buffer, size_t buffer_len);
 
 ReadBuffer slurp_file_or_panic(const char *path);
 void unmap_buffer(ReadBuffer *buf);
+
 
 // TODO(gerick): Extract all arena code into its own library,
 // It is cluttering thing op here 
