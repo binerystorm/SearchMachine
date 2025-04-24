@@ -1,11 +1,6 @@
 #include "glibc_platform.h"
 #include "defer.h"
 
-void die(int exit_code)
-{
-    exit(exit_code);
-}
-
 ReadBuffer slurp_file_or_panic(const char *path)
 {
     struct stat st;
@@ -15,7 +10,7 @@ ReadBuffer slurp_file_or_panic(const char *path)
     ReadBuffer failed = {0,0,0};
 
     if ((fd = open(path, O_RDONLY)) < 0){
-        WARN("Skipping, could not open %s: %s", path, strerror(errno));
+        ERROR("Skipping, could not open %s: %s", path, strerror(errno));
         return failed;
     }
     defer(
@@ -27,14 +22,14 @@ ReadBuffer slurp_file_or_panic(const char *path)
         return(failed);
     }
     if ((st.st_mode & S_IFMT) != S_IFREG){
-        INFO("Skipping %s is not a file", path);
+        ERROR("Cannot open %s, is not a file", path);
         return(failed);
     }
     Assert(st.st_size >= 0, "file has negative size???");
 
     if((data = (char*)mmap(NULL, st.st_size, PROT_READ, MAP_PRIVATE, fd, 0)) == MAP_FAILED){
         ERROR("Could not allocate memory: %s", strerror(errno));
-        die(1);
+        exit(1);
     }
 
     ReadBuffer ret = {

@@ -350,11 +350,12 @@ int main(int argc, char **argv)
 
     if(files == NULL){
         ERROR("No files available to be indexed, exiting...");
-        die(1);
+        exit(1);
     }
 
     // indexing files
     for(size_t i = 0; i < files_len; i++){
+        INFO("Indexing `%s` ...", files[i]);
         ReadBuffer file_buf = slurp_file_or_panic(files[i]);
         Str roam_buffer = {
             file_buf.data,
