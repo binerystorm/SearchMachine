@@ -11,8 +11,6 @@
 
 #include "arena.h"
 
-// #define Assert(pred) do{if(!(pred)){*(char*)NULL = 0;}}while(0)
-// TODO(gerick): maybe pull these typedefs into a comman types file
 struct ReadBuffer {
     const char * const data;
     const size_t cap;
@@ -33,14 +31,6 @@ void get_stdin(char *buffer, const size_t buffer_len);
 
 ReadBuffer slurp_file_or_panic(const char *path);
 void unmap_buffer(ReadBuffer *buf);
-
-
-// TODO(gerick): Extract all arena code into its own library,
-// It is cluttering thing op here 
-// TODO(gerick): Simplify Arena api by implementing constant
-// temporary region mode. Like this arena allcate will allways
-// allcate on a temp region, and if you want to keep the temp
-// region just commit it
 
 FixedArena fixed_arena_init(size_t nbytes);
 void *fixed_arena_alloc(FixedArena *arena, size_t nbytes);

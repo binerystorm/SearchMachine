@@ -88,73 +88,6 @@ char **get_files_in_dir(Arena *arena, const char *path, size_t *file_count)
     return(file_list);
 }
 
-char **get_files_in_dir2(Arena *arena, const char *path, size_t *file_count)
-{
-    // TODO(gerick): handle errors properly
-    DIR *dir_hdl;
-    // long start_loc = telldir(dir_hdl);
-    struct dirent *entry;
-    struct stat st;
-    size_t entry_count = 0;
-
-    // dir_hdl = opendir(path);
-    if((dir_hdl = opendir(path)) == NULL){
-        WARN("Could not open %s: %s", path, strerror(errno));
-        return NULL;
-    }
-    defer(
-        closedir(dir_hdl);
-    );
-    errno = 0;
-    while(true){
-        entry = readdir(dir_hdl);
-        Assert(errno == 0, "all `readdir` errors are mistakes in program"
-               "and out of user control");
-        if(entry == NULL){break;}
-
-        const size_t path_len = strlen(path) + strlen(entry->d_name) + 1;
-        char* file_name_buf = (char*)arena_alloc(arena, path_len);
-
-        strcpy(file_name_buf, path);
-        strcat(file_name_buf, entry->d_name);
-        if(stat(file_name_buf, &st) != 0){
-            continue;
-            Assert((arena->top - sizeof(void**)) >= path_len, "");
-            arena->top -= path_len;
-        }
-        if ((st.st_mode & S_IFMT) == S_IFREG){
-            entry_count += 1;
-        }
-        Assert((arena->top - sizeof(void**)) >= path_len, "");
-        arena->top -= path_len;
-    }
-    if(entry_count == 0){
-        return(NULL);
-    }
-
-    char **file_list = (char**)arena_alloc(arena, entry_count * sizeof(char*));
-    //seekdir(dir_hdl, start_loc);
-    rewinddir(dir_hdl);
-    for(size_t idx = 0; idx < entry_count;) {
-        entry = readdir(dir_hdl);
-        Assert(errno == 0 && entry != NULL, "");
-        // NOTE(gerick): +1 is for the NULL byte at the end of the cstr after concatination.
-        const size_t path_len = strlen(path) + strlen(entry->d_name) + 1;
-        file_list[idx] = (char*)arena_alloc(arena, path_len);
-        strcpy(file_list[idx], path);
-        strcat(file_list[idx], entry->d_name);
-        Assert(stat(file_list[idx], &st) == 0, "");
-        if ((st.st_mode & S_IFMT) == S_IFREG){
-            idx++;
-        } else {
-            //entry_count -= 1;
-            Assert((arena->top - sizeof(void**)) >= path_len, "");
-            arena->top -= path_len;
-        }
-    }
-    *file_count = entry_count;
-    return(file_list);
-}
 
 void get_stdin(char *buffer, size_t buffer_len, size_t *bytes_read)
 {
@@ -171,8 +104,6 @@ FixedArena fixed_arena_init(size_t nbytes)
 }
 void *fixed_arena_alloc(FixedArena *arena, size_t nbytes)
 {
-    // TODO(gerick): replace this with a log message or maybe a returned error
-    // so the rest of the program can handle it
     // NOTE(gerick): test code!!! relies on the user only allocating one data
     // type per arena
     Assert((arena->top + nbytes) < arena->cap, "Make sure the arena's new size does not excede the max size of the arena.");

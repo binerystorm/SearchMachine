@@ -41,6 +41,10 @@ void arena_unmap(Arena *arena);
 Arena arena_init()
 {
     void* data = (void*)mmap(NULL, getpagesize(), PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
+    if(data == MAP_FAILED){
+        ERROR("No more memory can be allocated by the system. Program exiting...");
+        exit(1);
+    }
     *(void**)data = (uint64)NULL;
     return (Arena) {
         (size_t)getpagesize(),
@@ -53,12 +57,6 @@ Arena arena_init()
 static void *__arena_genral_alloc(Arena *arena, size_t nbytes)
 {
     Assert(nbytes < (size_t)getpagesize(), "An arena cannot store a contiguis block of memory larger than the value returned by getpagesize()");
-    // TODO(gerick): when nbytes overflows arena remaining space we alocate new block
-    // to ensure struct are stored in contiguous memory however when allocating massive
-    // amounts of memory, block becomes fragmented
-    // TODO(gerick): Make better alignment system instead always alighning on 8 bytes
-    // STUDY(gerick): How does memory alignment word and what are the negative effects of bad
-    // alignment (at least on my machine)
     uint8 used_bytes = arena->top % 8;
     uint8 dead_bytes = (8 - used_bytes) * (used_bytes != 0);
 
@@ -66,8 +64,14 @@ static void *__arena_genral_alloc(Arena *arena, size_t nbytes)
         void *prev_block = arena->data;
         // arena->cap = getpagesize();
         arena->top = sizeof(void**);
-        arena->data = 
-            (void*)mmap(NULL, getpagesize(), PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
+
+        void *data = (void*)mmap(NULL, getpagesize(), PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
+        if(data == MAP_FAILED){
+            ERROR("No more memory can be allocated by the system. Program exiting...");
+            exit(1);
+        }
+
+        arena->data = data;
         *(void**)arena->data = prev_block;
     } else {
         arena->top += dead_bytes;
@@ -85,25 +89,19 @@ static void __arena_unmap_until(Arena *arena, void *until)
     Assert(arena->data != until, "No pages will be freed, I don't trust this");
     while(arena->data != until && arena->data != NULL){
         void *prev_page = *(void**)arena->data;
-        munmap(arena->data, arena->cap);
+        Assert(munmap(arena->data, arena->cap) == 0, 
+               "Any error that can occur during unmapping is a fault in the arena library. Error: %s", strerror(errno));
         arena->data = prev_page;
         arena->top = arena->cap;
     }
     Assert(!(arena->data == NULL && until != NULL), "Until pointer provided was not a valid page in the arena.");
 }
-// TODO(gerick): Handle all errors that can occure during mem_mapping
-// and mem_unmapping
 
-// TODO(gerick): Make all arena functions that can fail, log the location they where called from
 void *arena_alloc(Arena *arena, size_t nbytes)
 {
     return __arena_genral_alloc(arena, nbytes);
 }
 
-// TODO(gerick): If a temporary region allocation overflows a memory page --
-// causing the allacation to take place on a new page -- when discarding the
-// region, do we want to restore the dead bytes in the old page and
-// unmap the new page?
 void arena_discard_temp(Arena *arena)
 {
     Assert(arena->start_temp_region >= 8, "The discarding of a temporary region is smashing the reserved space for the pointer which points to the previos memory page. Something catastrophic has happend.");
